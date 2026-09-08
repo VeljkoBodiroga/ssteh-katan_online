@@ -12,7 +12,7 @@
         @if (!request()->is('/'))
             <a href="{{ route('rules') }}">Pravila igre</a>
             @auth
-                <a href="{{ route('play') }}">Igraj</a>
+                <a href="{{ route('lobby.index') }}">Igraj</a>
             @endauth
             <a href="{{ route('expansions.index') }}">Ekspanzije</a>
         @endif

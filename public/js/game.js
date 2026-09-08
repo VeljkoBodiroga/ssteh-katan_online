@@ -1,8 +1,13 @@
 // Port of src/Stranice/Igraj.tsx (React) na vanilla JS + Laravel API pozive.
-// IZMENA: igrac sam bira tromedju (teren) na kojoj hoce da bude, umesto da mu se
-// nasumicno dodeli. "Pocni igru" samo prikaze/potvrdi ono sto je vec izabrano.
+// DVA REZIMA:
+//  - MULTIPLAYER (cfg.gameId je postavljen, dosli smo iz lobija): server je izvor istine,
+//    svaki browser POLL-uje /api/games/{id} na ~2.5s i renderuje ono sto server kaze. Samo
+//    igrac na potezu (po pravoj ulogovanoj sesiji) moze da bira teren / baci kocku.
+//  - HOTSEAT (direktan pristup /igraj bez lobija): sve se odigrava lokalno u jednom browseru,
+//    korisno za brzo testiranje bez potrebe za dva naloga.
 (function () {
   const cfg = window.CATAN_CONFIG;
+  const MULTIPLAYER = !!cfg.gameId;
 
   const hexLayout = [3, 4, 5, 4, 3];
   const resourceLimits = { pustinja: 1, drvo: 4, ovca: 4, psenica: 4, cigla: 3, kamen: 3 };
@@ -22,7 +27,8 @@
   const center = 9;
   const cornerIndices = [0, 2, 11, 18, 16, 7];
 
-  // Master lista svih moguca 24 "tromedja" (mesta za naselje) - svaka je niz od 3 indeksa polja koja dodiruje.
+  // Master lista svih 24 tromedje (mesta za naselje) - MORA biti identicna serverskoj listi
+  // u GameApiController.php jer server proverava indekse koje posaljemo.
   const tromedje = [
     [0, 1, 4], [1, 2, 5], [2, 5, 6],
     [0, 3, 4], [1, 4, 5],
@@ -37,12 +43,16 @@
   ];
 
   let state = {
-    // faze: 'tiles' -> 'numbers' -> 'picking' -> 'ready' -> 'playing'
-    phase: "tiles",
+    phase: MULTIPLAYER ? "waiting-setup" : "tiles", // hotseat: tiles->numbers->picking->ready->playing
     tiles: Array(19).fill(null),
     counts: Object.fromEntries(Object.keys(resourceLimits).map((r) => [r, 0])),
     numbers: Array(19).fill(null),
     rolled: null,
+    isCreator: false,
+    createdBy: null,
+    turnOrder: [],
+    pickTurnIndex: 0,
+    playTurnIndex: 0,
     players:
       cfg.players && cfg.players.length > 0
         ? cfg.players.map((p) => ({ id: p.id, name: p.name, resources: { drvo: 0, ovca: 0, psenica: 0, cigla: 0, kamen: 0 } }))
@@ -51,10 +61,10 @@
             { id: 2, name: "Igrač 2", resources: { drvo: 0, ovca: 0, psenica: 0, cigla: 0, kamen: 0 } },
           ],
     log: [],
-    playerTromedje: [], // { id, fields } - popunjava se klikom igraca tokom 'picking' faze
-    pickOrder: [],       // niz id-jeva igraca u "zmija" redosledu, npr [1,2,2,1]
-    currentPickIndex: 0,
-    gameId: cfg.gameId || null, // ako dolazimo iz lobija, partija VEC postoji na serveru
+    playerTromedje: [],
+    currentPickIndex: 0, // hotseat picking
+    currentTurnIndex: 0, // hotseat playing
+    gameId: cfg.gameId || null,
   };
 
   function rollOneDie() {
@@ -71,10 +81,19 @@
         ...(options.headers || {}),
       },
     });
-    if (!res.ok) throw new Error(`API error ${res.status}`);
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.message || `API error ${res.status}`);
+    }
     return res.json();
   }
 
+  function playerName(id) {
+    const p = state.players.find((pl) => pl.id === id);
+    return p ? p.name : `Igrač ${id}`;
+  }
+
+  // ---------- Zajednicki prikaz table (koristi ga i hotseat i multiplayer) ----------
   function renderBoard() {
     const boardEl = document.getElementById("board");
     boardEl.innerHTML = "";
@@ -102,7 +121,7 @@
             numDiv.textContent = state.numbers[idx];
             hex.appendChild(numDiv);
           }
-        } else {
+        } else if (!MULTIPLAYER || state.isCreator) {
           const grid = document.createElement("div");
           grid.className = "options-grid";
           Object.keys(resourceLimits).forEach((res) => {
@@ -121,7 +140,7 @@
   }
 
   function handleSelect(idx, res) {
-    if (state.phase !== "tiles") return;
+    if (MULTIPLAYER && !state.isCreator) return;
     if (state.tiles[idx]) return;
     if (state.counts[res] >= resourceLimits[res]) {
       alert(`Nema više ${res}`);
@@ -157,31 +176,29 @@
     state.numbers = newNumbers;
     renderBoard();
 
-    // Nakon dodele brojeva prelazimo u fazu biranja terena.
-    enterPickingPhase();
+    if (MULTIPLAYER) {
+      // Kreator je gotov sa postavljanjem table - prikazi dugme za slanje na server.
+      document.getElementById("btn-submit-board").style.display = "inline-block";
+    } else {
+      enterPickingPhaseHotseat();
+    }
   }
 
-  function buildPickOrder() {
-    // "Zmija" redosled: 1,2,...,N, pa N,...,2,1 - svaki igrac bira ukupno 2 terena.
-    const ids = state.players.map((p) => p.id);
-    return [...ids, ...[...ids].reverse()];
+  // ---------- MULTIPLAYER: kreator salje gotovu tablu na server ----------
+  async function submitBoard() {
+    try {
+      await apiFetch(`/games/${state.gameId}/setup-board`, {
+        method: "POST",
+        body: JSON.stringify({ tiles: state.tiles, numbers: state.numbers }),
+      });
+      document.getElementById("setup-controls").style.display = "none";
+    } catch (e) {
+      alert("Greška: " + e.message);
+    }
   }
 
-  function enterPickingPhase() {
-    state.phase = "picking";
-    state.pickOrder = buildPickOrder();
-    state.currentPickIndex = 0;
-    state.playerTromedje = [];
-
-    document.getElementById("setup-controls").style.display = "none";
-    document.getElementById("picking-controls").style.display = "block";
-    renderPicking();
-  }
-
+  // ---------- Zajednicka logika biranja terena (opis + pravilo suseda) ----------
   function shareEdge(fieldsA, fieldsB) {
-    // Dva temena (tromedje) su "susedna" (spojena jednim putem) ako dele TACNO 2 od 3
-    // polja koja dodiruju. Ako dele samo 1 polje, nisu susedna - obe su na istom polju
-    // ali na razlicitim, nesusednim temenima, pa je dozvoljeno da oba budu zauzeta.
     const common = fieldsA.filter((f) => fieldsB.includes(f));
     return common.length >= 2;
   }
@@ -203,13 +220,153 @@
       .join(" · ");
   }
 
-  function renderPicking() {
+  // ---------- MULTIPLAYER: render picking na osnovu servera ----------
+  function renderPickingMultiplayer() {
+    const turnInfo = document.getElementById("turn-indicator");
+    const listEl = document.getElementById("tromedje-list");
+    const totalPicks = state.turnOrder.length * 2;
+    const currentUserId = state.turnOrder[state.pickTurnIndex % state.turnOrder.length];
+    const myTurn = currentUserId === cfg.currentUserId;
+
+    turnInfo.textContent = myTurn
+      ? `🎯 Na tebi je red da izabereš teren (${state.pickTurnIndex + 1}/${totalPicks})`
+      : `⏳ Na potezu: ${playerName(currentUserId)} (${state.pickTurnIndex + 1}/${totalPicks}) — čekaj svoj red...`;
+
+    listEl.innerHTML = "";
+    availableTromedje().forEach(({ idx, fields }) => {
+      const li = document.createElement("li");
+      const btn = document.createElement("button");
+      btn.textContent = `Teren #${idx + 1}: ${describeTromedja(fields)}`;
+      btn.disabled = !myTurn;
+      btn.onclick = () => pickTromedjaMultiplayer(idx);
+      li.appendChild(btn);
+      listEl.appendChild(li);
+    });
+  }
+
+  async function pickTromedjaMultiplayer(triIdx) {
+    try {
+      const game = await apiFetch(`/games/${state.gameId}/pick`, {
+        method: "POST",
+        body: JSON.stringify({ tri_index: triIdx }),
+      });
+      applyServerState(game);
+    } catch (e) {
+      alert("Greška: " + e.message);
+    }
+  }
+
+  // ---------- MULTIPLAYER: render igranja (bacanje kocke na potezu) ----------
+  function renderPlayingMultiplayer() {
+    const currentUserId = state.turnOrder[state.playTurnIndex % state.turnOrder.length];
+    const myTurn = currentUserId === cfg.currentUserId;
+
+    document.getElementById("turn-indicator-playing").textContent = myTurn
+      ? "🎯 Ti si na potezu — baci kockicu!"
+      : `⏳ Na potezu: ${playerName(currentUserId)} — čeka se...`;
+
+    document.getElementById("dice-icon").style.display = myTurn ? "block" : "none";
+    document.getElementById("btn-next-turn").style.display = "none"; // red se automatski predaje na serveru
+  }
+
+  async function rollGameDiceMultiplayer() {
+    const diceIcon = document.getElementById("dice-icon");
+    diceIcon.classList.add("dice-shake");
+    setTimeout(() => diceIcon.classList.remove("dice-shake"), 500);
+
+    try {
+      const game = await apiFetch(`/games/${state.gameId}/roll`, { method: "POST" });
+      applyServerState(game);
+    } catch (e) {      alert("Greška: " + e.message);
+    }
+  }
+
+  // ---------- MULTIPLAYER: primeni stanje dobijeno sa servera ----------
+  function applyServerState(game) {
+    state.createdBy = game.created_by;
+    state.isCreator = game.created_by === cfg.currentUserId;
+
+    state.players = game.players.map((p) => ({
+      id: p.id,
+      name: p.username,
+      resources: Object.assign({ drvo: 0, ovca: 0, psenica: 0, cigla: 0, kamen: 0 }, p.resources || {}),
+    }));
+
+    const bs = game.board_state;
+
+    if (!bs) {
+      // Tabla jos nije postavljena.
+      state.phase = "waiting-setup";
+      document.getElementById("setup-controls").style.display = state.isCreator ? "block" : "none";
+      document.getElementById("waiting-host-msg").style.display = state.isCreator ? "none" : "block";
+      document.getElementById("picking-controls").style.display = "none";
+      document.getElementById("game-controls").style.display = "none";
+      renderBoard();
+      return;
+    }
+
+    state.tiles = bs.tiles;
+    state.numbers = bs.numbers;
+    state.turnOrder = bs.turnOrder || [];
+    state.pickTurnIndex = bs.pickTurnIndex || 0;
+    state.playTurnIndex = bs.playTurnIndex || 0;
+    state.playerTromedje = bs.playerTromedje || [];
+    state.log = bs.log || [];
+    state.phase = bs.phase;
+
+    document.getElementById("setup-controls").style.display = "none";
+    document.getElementById("waiting-host-msg").style.display = "none";
+
+    if (bs.phase === "picking") {
+      document.getElementById("picking-controls").style.display = "block";
+      document.getElementById("game-controls").style.display = "none";
+      document.getElementById("btn-start-game").style.display = "none";
+      renderPickingMultiplayer();
+    } else if (bs.phase === "playing") {
+      document.getElementById("picking-controls").style.display = "none";
+      document.getElementById("game-controls").style.display = "block";
+      renderPlayers();
+      renderLog();
+      renderPlayingMultiplayer();
+    }
+
+    renderBoard();
+  }
+
+  async function pollLoop() {
+    if (!MULTIPLAYER) return;
+    try {
+      const game = await apiFetch(`/games/${state.gameId}`);
+      applyServerState(game);
+    } catch (e) {
+      console.warn("Greška pri osvežavanju partije:", e);
+    }
+    setTimeout(pollLoop, 1000);
+  }
+
+  // ---------- HOTSEAT (bez lobija - lokalna simulacija u jednom browseru) ----------
+  function buildPickOrder() {
+    const ids = state.players.map((p) => p.id);
+    return [...ids, ...[...ids].reverse()];
+  }
+
+  function enterPickingPhaseHotseat() {
+    state.phase = "picking";
+    state.pickOrderHotseat = buildPickOrder();
+    state.currentPickIndex = 0;
+    state.playerTromedje = [];
+
+    document.getElementById("setup-controls").style.display = "none";
+    document.getElementById("picking-controls").style.display = "block";
+    renderPickingHotseat();
+  }
+
+  function renderPickingHotseat() {
     const turnInfo = document.getElementById("turn-indicator");
     const listEl = document.getElementById("tromedje-list");
     const startBtn = document.getElementById("btn-start-game");
 
-    if (state.currentPickIndex >= state.pickOrder.length) {
-      // Svi su izabrali - spremni smo da pokrenemo partiju.
+    if (state.currentPickIndex >= state.pickOrderHotseat.length) {
       state.phase = "ready";
       turnInfo.textContent = "✅ Svi tereni su izabrani. Klikni „Počni igru“.";
       listEl.innerHTML = "";
@@ -218,9 +375,8 @@
       return;
     }
 
-    const currentPlayerId = state.pickOrder[state.currentPickIndex];
-    const player = state.players.find((p) => p.id === currentPlayerId);
-    turnInfo.textContent = `🎯 Na potezu: ${player ? player.name : "Igrač " + currentPlayerId} — izaberi teren (${state.currentPickIndex + 1}/${state.pickOrder.length})`;
+    const currentPlayerId = state.pickOrderHotseat[state.currentPickIndex];
+    turnInfo.textContent = `🎯 Na potezu: ${playerName(currentPlayerId)} — izaberi teren (${state.currentPickIndex + 1}/${state.pickOrderHotseat.length})`;
     startBtn.style.display = "none";
 
     listEl.innerHTML = "";
@@ -228,7 +384,7 @@
       const li = document.createElement("li");
       const btn = document.createElement("button");
       btn.textContent = `Teren #${idx + 1}: ${describeTromedja(fields)}`;
-      btn.onclick = () => pickTromedja(idx);
+      btn.onclick = () => pickTromedjaHotseat(idx);
       li.appendChild(btn);
       listEl.appendChild(li);
     });
@@ -236,96 +392,92 @@
     renderBoard();
   }
 
-  function pickTromedja(triIdx) {
-    if (state.phase !== "picking") return;
-    const currentPlayerId = state.pickOrder[state.currentPickIndex];
+  function pickTromedjaHotseat(triIdx) {
+    const currentPlayerId = state.pickOrderHotseat[state.currentPickIndex];
     const fields = tromedje[triIdx];
-
     state.playerTromedje.push({ id: currentPlayerId, fields });
 
     const brojevi = fields.map((idx) => state.numbers[idx]).filter((n) => n !== null);
-    const player = state.players.find((p) => p.id === currentPlayerId);
-    state.log = [
-      `${player ? player.name : "Igrač " + currentPlayerId} je izabrao teren: brojevi ${brojevi.join(", ")}`,
-      ...state.log,
-    ].slice(0, 4);
+    state.log = [`${playerName(currentPlayerId)} je izabrao selo: brojevi ${brojevi.join(", ")}`, ...state.log].slice(0, 4);
 
     state.currentPickIndex += 1;
-    renderPicking();
+    renderPickingHotseat();
   }
 
-  async function finalizeGame() {
-    // Ovde vise NE biramo nasumicno - samo prikazujemo ono sto je igrac vec izabrao
-    // tokom 'picking' faze i saljemo na server.
+  async function finalizeGameHotseat() {
     if (state.phase !== "ready") return;
-
     state.phase = "playing";
 
     document.getElementById("picking-controls").style.display = "none";
     document.getElementById("game-controls").style.display = "block";
+    state.currentTurnIndex = 0;
     renderPlayers();
     renderLog();
     renderBoard();
-
-    const boardState = { tiles: state.tiles, numbers: state.numbers, playerTromedje: state.playerTromedje };
+    renderTurnHotseat();
 
     try {
-      if (state.gameId) {
-        // Partija je vec kreirana preko lobija (status je bio 'lobby' -> 'setup').
-        // Samo azuriramo stanje table i prebacujemo je u 'in_progress'.
-        await apiFetch(`/games/${state.gameId}`, {
-          method: "PUT",
-          body: JSON.stringify({ board_state: boardState, status: "in_progress" }),
-        });
-      } else {
-        // Nema lobija (direktan pristup /igraj) - "hotseat" rezim, kreiramo novu partiju.
-        const game = await apiFetch("/games", {
-          method: "POST",
-          body: JSON.stringify({ board_state: boardState }),
-        });
-        state.gameId = game.id;
-      }
+      const game = await apiFetch("/games", {
+        method: "POST",
+        body: JSON.stringify({ board_state: { tiles: state.tiles, numbers: state.numbers, playerTromedje: state.playerTromedje } }),
+      });
+      state.gameId = game.id;
     } catch (e) {
       console.warn("Nije moguće sačuvati partiju na serveru:", e);
     }
   }
 
-  async function rollGameDice() {
+  function renderTurnHotseat() {
+    const player = state.players[state.currentTurnIndex];
+    document.getElementById("turn-indicator-playing").textContent = `🎯 Na potezu: ${player ? player.name : "?"}`;
+    document.getElementById("dice-icon").style.display = "block";
+    document.getElementById("btn-next-turn").style.display = "none";
+  }
+
+  function nextTurnHotseat() {
+    state.currentTurnIndex = (state.currentTurnIndex + 1) % state.players.length;
+    renderTurnHotseat();
+  }
+
+  async function rollGameDiceHotseat() {
+    if (document.getElementById("dice-icon").style.display === "none") return;
+
     const diceIcon = document.getElementById("dice-icon");
     diceIcon.classList.add("dice-shake");
     setTimeout(() => diceIcon.classList.remove("dice-shake"), 500);
 
     let dice;
     try {
-      const result = state.gameId
-        ? await apiFetch(`/games/${state.gameId}/roll`, { method: "POST" })
-        : null;
-      dice = result ? result.roll : rollOneDie() + rollOneDie();
-      if (result) state.log = result.log;
+      const result = state.gameId ? await apiFetch(`/games/${state.gameId}/roll`, { method: "POST" }) : null;
+      dice = result ? result.roll || rollOneDie() + rollOneDie() : rollOneDie() + rollOneDie();
     } catch (e) {
       dice = rollOneDie() + rollOneDie();
-      state.log = [`Dobijen je broj ${dice}`, ...state.log].slice(0, 4);
     }
-
+    state.log = [`Dobijen je broj ${dice}`, ...state.log].slice(0, 4);
     state.rolled = dice;
 
     state.players = state.players.map((p) => {
       const upd = { ...p, resources: { ...p.resources } };
-      const troms = state.playerTromedje.filter((t) => t.id === p.id);
-      troms.forEach((trom) => {
-        trom.fields.forEach((idx) => {
-          if (state.numbers[idx] === dice && state.tiles[idx] && state.tiles[idx] !== "pustinja") {
-            upd.resources[state.tiles[idx]] += 1;
-          }
+      state.playerTromedje
+        .filter((t) => t.id === p.id)
+        .forEach((trom) => {
+          trom.fields.forEach((idx) => {
+            if (state.numbers[idx] === dice && state.tiles[idx] && state.tiles[idx] !== "pustinja") {
+              upd.resources[state.tiles[idx]] += 1;
+            }
+          });
         });
-      });
       return upd;
     });
 
     renderPlayers();
     renderLog();
+
+    document.getElementById("dice-icon").style.display = "none";
+    document.getElementById("btn-next-turn").style.display = "inline-block";
   }
 
+  // ---------- Zajednicko ----------
   function renderPlayers() {
     const el = document.getElementById("player-info");
     el.innerHTML = "";
@@ -333,7 +485,7 @@
       const box = document.createElement("div");
       box.className = "player-box";
       box.innerHTML = `<h3 style="margin:0">${p.name}</h3>
-        <p>🌲 ${p.resources.drvo} 🐑 ${p.resources.ovca} 🌾 ${p.resources.psenica} 🧱 ${p.resources.cigla} 🪨 ${p.resources.kamen}</p>`;
+        <p>🌲 ${p.resources.drvo || 0} 🐑 ${p.resources.ovca || 0} 🌾 ${p.resources.psenica || 0} 🧱 ${p.resources.cigla || 0} 🪨 ${p.resources.kamen || 0}</p>`;
       el.appendChild(box);
     });
   }
@@ -349,7 +501,7 @@
   }
 
   async function saveGame() {
-    if (!state.gameId) return alert("Prvo pokreni partiju (Počni igru).");
+    if (!state.gameId) return alert("Prvo pokreni partiju.");
     try {
       await apiFetch(`/games/${state.gameId}`, {
         method: "PUT",
@@ -361,57 +513,45 @@
     }
   }
 
-  async function loadGame() {
-    if (!state.gameId) return alert("Nema aktivne partije za učitavanje.");
-    try {
-      const game = await apiFetch(`/games/${state.gameId}`);
-      const bs = game.board_state || {};
-      state.tiles = bs.tiles || state.tiles;
-      state.numbers = bs.numbers || state.numbers;
-      state.playerTromedje = bs.playerTromedje || state.playerTromedje;
-      state.players = bs.players || state.players;
-      state.log = bs.log || state.log;
-      renderBoard();
-      renderPlayers();
-      renderLog();
-      alert("✅ Partija učitana.");
-    } catch (e) {
-      alert("❌ Greška pri učitavanju.");
-    }
-  }
-
   function resetGame() {
     if (!window.confirm("Reset partiju?")) return;
-    state = {
-      phase: "tiles",
-      tiles: Array(19).fill(null),
-      counts: Object.fromEntries(Object.keys(resourceLimits).map((r) => [r, 0])),
-      numbers: Array(19).fill(null),
-      rolled: null,
-      players: state.players.map((p) => ({ ...p, resources: { drvo: 0, ovca: 0, psenica: 0, cigla: 0, kamen: 0 } })),
-      log: [],
-      playerTromedje: [],
-      pickOrder: [],
-      currentPickIndex: 0,
-      gameId: null,
-    };
-    document.getElementById("setup-controls").style.display = "block";
-    document.getElementById("picking-controls").style.display = "none";
-    document.getElementById("game-controls").style.display = "none";
-    document.getElementById("setup-roll-result").textContent = "";
-    renderBoard();
+    window.location.reload();
   }
 
   document.getElementById("btn-roll-setup").addEventListener("click", rollDiceAndAssign);
-  document.getElementById("btn-start-game").addEventListener("click", finalizeGame);
-  document.getElementById("dice-icon").addEventListener("click", rollGameDice);
+  document.getElementById("dice-icon").addEventListener("click", MULTIPLAYER ? rollGameDiceMultiplayer : rollGameDiceHotseat);
   document.getElementById("btn-finish-game").addEventListener("click", () => {
-    resetGame();
     window.location.href = "/";
   });
   document.getElementById("btn-save").addEventListener("click", saveGame);
-  document.getElementById("btn-load").addEventListener("click", loadGame);
   document.getElementById("btn-reset").addEventListener("click", resetGame);
 
-  renderBoard();
+  if (MULTIPLAYER) {
+    document.getElementById("btn-submit-board").addEventListener("click", submitBoard);
+    document.getElementById("btn-load").style.display = "none";
+    document.getElementById("btn-save").style.display = "none";
+    pollLoop();
+  } else {
+    document.getElementById("btn-start-game").addEventListener("click", finalizeGameHotseat);
+    document.getElementById("btn-next-turn").addEventListener("click", nextTurnHotseat);
+    document.getElementById("btn-load").addEventListener("click", async () => {
+      if (!state.gameId) return alert("Nema aktivne partije za učitavanje.");
+      try {
+        const game = await apiFetch(`/games/${state.gameId}`);
+        const bs = game.board_state || {};
+        state.tiles = bs.tiles || state.tiles;
+        state.numbers = bs.numbers || state.numbers;
+        state.playerTromedje = bs.playerTromedje || state.playerTromedje;
+        state.players = bs.players || state.players;
+        state.log = bs.log || state.log;
+        renderBoard();
+        renderPlayers();
+        renderLog();
+        alert("✅ Partija učitana.");
+      } catch (e) {
+        alert("❌ Greška pri učitavanju.");
+      }
+    });
+    renderBoard();
+  }
 })();
