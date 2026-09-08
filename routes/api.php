@@ -18,5 +18,7 @@ Route::middleware(['web', 'auth'])->group(function () {
 
     // ugnjezdena ruta
     Route::get('/games/{game}/players', [GameApiController::class, 'players']);
+    Route::post('/games/{game}/setup-board', [GameApiController::class, 'setupBoard']);
+    Route::post('/games/{game}/pick', [GameApiController::class, 'pick']);
     Route::post('/games/{game}/roll', [GameApiController::class, 'roll']);
 });

@@ -14,9 +14,14 @@
 @endif
 <div class="board-wrapper">
     <div class="left-column">
+        <p id="waiting-host-msg" style="display:none; color:#ccc;">
+            ⏳ Čeka se da kreator lobija postavi tablu (izabere polja i baci kockicu za brojeve)...
+        </p>
+
         <div id="setup-controls">
             <button class="dice-btn" id="btn-roll-setup">Baci kocku i dodeli brojeve</button>
             <p id="setup-roll-result"></p>
+            <button class="start-btn" id="btn-submit-board" style="display:none;">Postavi tablu</button>
         </div>
 
         <div id="picking-controls" style="display:none;">
@@ -27,9 +32,11 @@
 
         <div id="game-controls" style="display:none;">
             <div class="button-row">
+                <p id="turn-indicator-playing" style="font-weight:600; margin:0 10px 0 0;"></p>
                 <div class="dice-icon" id="dice-icon">
                     <span style="font-size: 32px; cursor: pointer;">🎲</span>
                 </div>
+                <button class="start-btn" id="btn-next-turn" style="display:none;">Dalje</button>
                 <button class="start-btn" id="btn-finish-game">Završi partiju</button>
             </div>
 
@@ -60,6 +67,7 @@
         apiBase: "{{ url('/api') }}",
         gameId: @json($game->id ?? null),
         players: @json($players ?? []),
+        currentUserId: {{ auth()->id() ?? 'null' }},
     };
 </script>
 <script src="{{ asset('js/game.js') }}"></script>
