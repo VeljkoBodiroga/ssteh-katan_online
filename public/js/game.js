@@ -1,4 +1,6 @@
 // Port of src/Stranice/Igraj.tsx (React) na vanilla JS + Laravel API pozive.
+// IZMENA: igrac sam bira tromedju (teren) na kojoj hoce da bude, umesto da mu se
+// nasumicno dodeli. "Pocni igru" samo prikaze/potvrdi ono sto je vec izabrano.
 (function () {
   const cfg = window.CATAN_CONFIG;
 
@@ -20,6 +22,7 @@
   const center = 9;
   const cornerIndices = [0, 2, 11, 18, 16, 7];
 
+  // Master lista svih moguca 24 "tromedja" (mesta za naselje) - svaka je niz od 3 indeksa polja koja dodiruje.
   const tromedje = [
     [0, 1, 4], [1, 2, 5], [2, 5, 6],
     [0, 3, 4], [1, 4, 5],
@@ -34,17 +37,20 @@
   ];
 
   let state = {
+    // faze: 'tiles' -> 'numbers' -> 'picking' -> 'ready' -> 'playing'
+    phase: "tiles",
     tiles: Array(19).fill(null),
     counts: Object.fromEntries(Object.keys(resourceLimits).map((r) => [r, 0])),
     numbers: Array(19).fill(null),
     rolled: null,
-    started: false,
     players: [
       { id: 1, name: "Igrač 1", resources: { drvo: 0, ovca: 0, psenica: 0, cigla: 0, kamen: 0 } },
       { id: 2, name: "Igrač 2", resources: { drvo: 0, ovca: 0, psenica: 0, cigla: 0, kamen: 0 } },
     ],
     log: [],
-    playerTromedje: [],
+    playerTromedje: [], // { id, fields } - popunjava se klikom igraca tokom 'picking' faze
+    pickOrder: [],       // niz id-jeva igraca u "zmija" redosledu, npr [1,2,2,1]
+    currentPickIndex: 0,
     gameId: null,
   };
 
@@ -112,6 +118,7 @@
   }
 
   function handleSelect(idx, res) {
+    if (state.phase !== "tiles") return;
     if (state.tiles[idx]) return;
     if (state.counts[res] >= resourceLimits[res]) {
       alert(`Nema više ${res}`);
@@ -146,40 +153,117 @@
 
     state.numbers = newNumbers;
     renderBoard();
+
+    // Nakon dodele brojeva prelazimo u fazu biranja terena.
+    enterPickingPhase();
   }
 
-  async function startGame() {
-    const allAssigned = state.tiles.every((tile, idx) => tile === "pustinja" || state.numbers[idx] !== null);
-    if (!allAssigned) return alert("Prvo dodeli brojeve!");
+  function buildPickOrder() {
+    // "Zmija" redosled: 1,2,...,N, pa N,...,2,1 - svaki igrac bira ukupno 2 terena.
+    const ids = state.players.map((p) => p.id);
+    return [...ids, ...[...ids].reverse()];
+  }
 
-    const shuffled = [...tromedje].sort(() => Math.random() - 0.5);
-    const chosen = [];
-    for (let pid = 1; pid <= state.players.length; pid++) {
-      let playerT = [];
-      for (let i = 0; i < 2; i++) {
-        const candidate = shuffled.find((tri) => {
-          const overlapSelf = playerT.some((t) => t.some((f) => tri.includes(f)));
-          const overlapOthers = chosen.some((ch) => ch.fields.some((f) => tri.includes(f)));
-          return !overlapSelf && !overlapOthers;
-        });
-        if (candidate) {
-          playerT.push(candidate);
-          shuffled.splice(shuffled.indexOf(candidate), 1);
-        }
-      }
-      playerT.forEach((tri) => chosen.push({ id: pid, fields: tri }));
-    }
-    state.playerTromedje = chosen;
-    state.log = [...chosen.map((o) => `Igrač ${o.id}: ${JSON.stringify(o.fields)}`), ...state.log].slice(0, 4);
-    state.started = true;
+  function enterPickingPhase() {
+    state.phase = "picking";
+    state.pickOrder = buildPickOrder();
+    state.currentPickIndex = 0;
+    state.playerTromedje = [];
 
     document.getElementById("setup-controls").style.display = "none";
+    document.getElementById("picking-controls").style.display = "block";
+    renderPicking();
+  }
+
+  function shareEdge(fieldsA, fieldsB) {
+    // Dva temena (tromedje) su "susedna" (spojena jednim putem) ako dele TACNO 2 od 3
+    // polja koja dodiruju. Ako dele samo 1 polje, nisu susedna - obe su na istom polju
+    // ali na razlicitim, nesusednim temenima, pa je dozvoljeno da oba budu zauzeta.
+    const common = fieldsA.filter((f) => fieldsB.includes(f));
+    return common.length >= 2;
+  }
+
+  function availableTromedje() {
+    return tromedje
+      .map((fields, idx) => ({ idx, fields }))
+      .filter(({ fields }) => !state.playerTromedje.some((t) => shareEdge(fields, t.fields)));
+  }
+
+  function describeTromedja(fields) {
+    return fields
+      .map((idx) => {
+        const res = state.tiles[idx];
+        const num = state.numbers[idx];
+        const emoji = resourceEmojis[res] || "?";
+        return num ? `${emoji}${num}` : `${emoji}`;
+      })
+      .join(" · ");
+  }
+
+  function renderPicking() {
+    const turnInfo = document.getElementById("turn-indicator");
+    const listEl = document.getElementById("tromedje-list");
+    const startBtn = document.getElementById("btn-start-game");
+
+    if (state.currentPickIndex >= state.pickOrder.length) {
+      // Svi su izabrali - spremni smo da pokrenemo partiju.
+      state.phase = "ready";
+      turnInfo.textContent = "✅ Svi tereni su izabrani. Klikni „Počni igru“.";
+      listEl.innerHTML = "";
+      startBtn.style.display = "inline-block";
+      renderBoard();
+      return;
+    }
+
+    const currentPlayerId = state.pickOrder[state.currentPickIndex];
+    const player = state.players.find((p) => p.id === currentPlayerId);
+    turnInfo.textContent = `🎯 Na potezu: ${player ? player.name : "Igrač " + currentPlayerId} — izaberi teren (${state.currentPickIndex + 1}/${state.pickOrder.length})`;
+    startBtn.style.display = "none";
+
+    listEl.innerHTML = "";
+    availableTromedje().forEach(({ idx, fields }) => {
+      const li = document.createElement("li");
+      const btn = document.createElement("button");
+      btn.textContent = `Teren #${idx + 1}: ${describeTromedja(fields)}`;
+      btn.onclick = () => pickTromedja(idx);
+      li.appendChild(btn);
+      listEl.appendChild(li);
+    });
+
+    renderBoard();
+  }
+
+  function pickTromedja(triIdx) {
+    if (state.phase !== "picking") return;
+    const currentPlayerId = state.pickOrder[state.currentPickIndex];
+    const fields = tromedje[triIdx];
+
+    state.playerTromedje.push({ id: currentPlayerId, fields });
+
+    const brojevi = fields.map((idx) => state.numbers[idx]).filter((n) => n !== null);
+    const player = state.players.find((p) => p.id === currentPlayerId);
+    state.log = [
+      `${player ? player.name : "Igrač " + currentPlayerId} je izabrao teren: brojevi ${brojevi.join(", ")}`,
+      ...state.log,
+    ].slice(0, 4);
+
+    state.currentPickIndex += 1;
+    renderPicking();
+  }
+
+  async function finalizeGame() {
+    // Ovde vise NE biramo nasumicno - samo prikazujemo ono sto je igrac vec izabrao
+    // tokom 'picking' faze i saljemo na server.
+    if (state.phase !== "ready") return;
+
+    state.phase = "playing";
+
+    document.getElementById("picking-controls").style.display = "none";
     document.getElementById("game-controls").style.display = "block";
     renderPlayers();
     renderLog();
     renderBoard();
 
-    // Kreiraj partiju na backendu (POST /api/games)
     try {
       const game = await apiFetch("/games", {
         method: "POST",
@@ -198,7 +282,6 @@
 
     let dice;
     try {
-      // POST /api/games/{id}/roll -> backend zove javni dice API i cuva log
       const result = state.gameId
         ? await apiFetch(`/games/${state.gameId}/roll`, { method: "POST" })
         : null;
@@ -285,24 +368,27 @@
   function resetGame() {
     if (!window.confirm("Reset partiju?")) return;
     state = {
+      phase: "tiles",
       tiles: Array(19).fill(null),
       counts: Object.fromEntries(Object.keys(resourceLimits).map((r) => [r, 0])),
       numbers: Array(19).fill(null),
       rolled: null,
-      started: false,
       players: state.players.map((p) => ({ ...p, resources: { drvo: 0, ovca: 0, psenica: 0, cigla: 0, kamen: 0 } })),
       log: [],
       playerTromedje: [],
+      pickOrder: [],
+      currentPickIndex: 0,
       gameId: null,
     };
     document.getElementById("setup-controls").style.display = "block";
+    document.getElementById("picking-controls").style.display = "none";
     document.getElementById("game-controls").style.display = "none";
     document.getElementById("setup-roll-result").textContent = "";
     renderBoard();
   }
 
   document.getElementById("btn-roll-setup").addEventListener("click", rollDiceAndAssign);
-  document.getElementById("btn-start-game").addEventListener("click", startGame);
+  document.getElementById("btn-start-game").addEventListener("click", finalizeGame);
   document.getElementById("dice-icon").addEventListener("click", rollGameDice);
   document.getElementById("btn-finish-game").addEventListener("click", () => {
     resetGame();

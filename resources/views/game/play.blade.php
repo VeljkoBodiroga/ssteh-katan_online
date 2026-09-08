@@ -12,7 +12,12 @@
         <div id="setup-controls">
             <button class="dice-btn" id="btn-roll-setup">Baci kocku i dodeli brojeve</button>
             <p id="setup-roll-result"></p>
-            <button class="start-btn" id="btn-start-game">Počni igru</button>
+        </div>
+
+        <div id="picking-controls" style="display:none;">
+            <p id="turn-indicator" style="font-weight:600;"></p>
+            <ul id="tromedje-list" style="list-style:none; padding:0; max-height:260px; overflow-y:auto;"></ul>
+            <button class="start-btn" id="btn-start-game" style="display:none;">Počni igru</button>
         </div>
 
         <div id="game-controls" style="display:none;">
