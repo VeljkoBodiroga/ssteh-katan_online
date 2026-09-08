@@ -43,15 +43,18 @@
     counts: Object.fromEntries(Object.keys(resourceLimits).map((r) => [r, 0])),
     numbers: Array(19).fill(null),
     rolled: null,
-    players: [
-      { id: 1, name: "Igrač 1", resources: { drvo: 0, ovca: 0, psenica: 0, cigla: 0, kamen: 0 } },
-      { id: 2, name: "Igrač 2", resources: { drvo: 0, ovca: 0, psenica: 0, cigla: 0, kamen: 0 } },
-    ],
+    players:
+      cfg.players && cfg.players.length > 0
+        ? cfg.players.map((p) => ({ id: p.id, name: p.name, resources: { drvo: 0, ovca: 0, psenica: 0, cigla: 0, kamen: 0 } }))
+        : [
+            { id: 1, name: "Igrač 1", resources: { drvo: 0, ovca: 0, psenica: 0, cigla: 0, kamen: 0 } },
+            { id: 2, name: "Igrač 2", resources: { drvo: 0, ovca: 0, psenica: 0, cigla: 0, kamen: 0 } },
+          ],
     log: [],
     playerTromedje: [], // { id, fields } - popunjava se klikom igraca tokom 'picking' faze
     pickOrder: [],       // niz id-jeva igraca u "zmija" redosledu, npr [1,2,2,1]
     currentPickIndex: 0,
-    gameId: null,
+    gameId: cfg.gameId || null, // ako dolazimo iz lobija, partija VEC postoji na serveru
   };
 
   function rollOneDie() {
@@ -264,14 +267,26 @@
     renderLog();
     renderBoard();
 
+    const boardState = { tiles: state.tiles, numbers: state.numbers, playerTromedje: state.playerTromedje };
+
     try {
-      const game = await apiFetch("/games", {
-        method: "POST",
-        body: JSON.stringify({ board_state: { tiles: state.tiles, numbers: state.numbers, playerTromedje: state.playerTromedje } }),
-      });
-      state.gameId = game.id;
+      if (state.gameId) {
+        // Partija je vec kreirana preko lobija (status je bio 'lobby' -> 'setup').
+        // Samo azuriramo stanje table i prebacujemo je u 'in_progress'.
+        await apiFetch(`/games/${state.gameId}`, {
+          method: "PUT",
+          body: JSON.stringify({ board_state: boardState, status: "in_progress" }),
+        });
+      } else {
+        // Nema lobija (direktan pristup /igraj) - "hotseat" rezim, kreiramo novu partiju.
+        const game = await apiFetch("/games", {
+          method: "POST",
+          body: JSON.stringify({ board_state: boardState }),
+        });
+        state.gameId = game.id;
+      }
     } catch (e) {
-      console.warn("Nije moguće kreirati partiju na serveru:", e);
+      console.warn("Nije moguće sačuvati partiju na serveru:", e);
     }
   }
 

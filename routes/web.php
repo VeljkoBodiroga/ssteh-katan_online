@@ -6,6 +6,7 @@ use App\Http\Controllers\Auth\RegisterController;
 use App\Http\Controllers\ExpansionController;
 use App\Http\Controllers\GameController;
 use App\Http\Controllers\HomeController;
+use App\Http\Controllers\LobbyController;
 use App\Http\Controllers\StatsController;
 use Illuminate\Support\Facades\Route;
 
@@ -35,6 +36,14 @@ Route::post('/logout', [LoginController::class, 'logout'])->middleware('auth')->
 Route::middleware('auth')->group(function () {
     Route::get('/statistika', [StatsController::class, 'index'])->name('stats');
     Route::get('/igraj', [GameController::class, 'play'])->name('play');
+
+    Route::get('/lobi', [LobbyController::class, 'index'])->name('lobby.index');
+    Route::post('/lobi', [LobbyController::class, 'store'])->name('lobby.store');
+    Route::post('/lobi/pridruzi', [LobbyController::class, 'joinByCode'])->name('lobby.joinByCode');
+    Route::get('/lobi/{game}', [LobbyController::class, 'show'])->name('lobby.show');
+    Route::get('/lobi/{game}/status', [LobbyController::class, 'status'])->name('lobby.status');
+    Route::post('/lobi/{game}/pridruzi', [LobbyController::class, 'join'])->name('lobby.join');
+    Route::post('/lobi/{game}/pokreni', [LobbyController::class, 'start'])->name('lobby.start');
 });
 
 // ---- Admin ----

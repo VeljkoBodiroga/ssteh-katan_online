@@ -11,7 +11,7 @@
             </div>
 
             @auth
-                <a href="{{ route('play') }}" class="play-btn">Igraj</a>
+                <a href="{{ route('lobby.index') }}" class="play-btn">Igraj</a>
             @else
                 <a href="{{ route('login') }}" class="play-btn">Igraj</a>
             @endauth

@@ -7,6 +7,11 @@
 @endpush
 
 @section('content')
+@if ($game)
+    <p style="text-align:center; color:#ccc; margin:10px 0;">
+        Partija #{{ $game->id }} — igrači: {{ $players->pluck('name')->join(', ') }}
+    </p>
+@endif
 <div class="board-wrapper">
     <div class="left-column">
         <div id="setup-controls">
@@ -53,6 +58,8 @@
         csrfToken: document.querySelector('meta[name="csrf-token"]').content,
         imagesBase: "{{ asset('images') }}",
         apiBase: "{{ url('/api') }}",
+        gameId: @json($game->id ?? null),
+        players: @json($players ?? []),
     };
 </script>
 <script src="{{ asset('js/game.js') }}"></script>
