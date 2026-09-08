@@ -1,0 +1,275 @@
+.board-wrapper {
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 150px;
+  margin: 20px 0;
+  font-family: Arial, sans-serif;
+}
+
+.left-column {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  height: 100%;
+}
+
+.player-info {
+  background: #eee;
+  padding: 15px;
+  border-radius: 12px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+  width: 250px;
+  margin-bottom: 15px;
+}
+
+.roll-log {
+  background: #eee;
+  padding: 15px;
+  border-radius: 12px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+  width: 250px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.roll-log::-webkit-scrollbar {
+  width: 8px;
+}
+
+.roll-log::-webkit-scrollbar-thumb {
+  background-color: #ccc;
+  border-radius: 4px;
+}
+
+.player-box {
+  margin-bottom: 10px;
+}
+
+.board {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0px;
+  margin-top: 15px;
+  margin-bottom: 15px;
+}
+
+.row {
+  display: flex;
+  gap: 0px;
+  margin: -7px;
+}
+
+.hex {
+  width: 120px;
+  height: 120px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  clip-path: polygon(
+    50% 0%,
+    93% 25%,
+    93% 75%,
+    50% 100%,
+    7% 75%,
+    7% 25%
+  );
+  position: relative;
+  margin: 0px;
+  overflow: hidden;
+  background: #eee;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+
+.hex img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.number {
+  position: absolute;
+  background: #f7cb64;
+  border-radius: 50%;
+  padding: 5px 10px;
+  font-size: 14px;
+  font-weight: bold;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.controls, .roll-log button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.dice-btn, .start-btn {
+  padding: 8px 18px;
+  font-size: 16px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  background-color: #272634;
+  color: white;
+  transition: background 0.3s, transform 0.2s;
+}
+
+.dice-btn:hover, .start-btn:hover {
+  background-color: #3e3d4d;
+  transform: scale(1.05);
+}
+
+.button-row {
+  display: flex;
+  flex-direction: row;
+  gap: 10px; 
+  justify-content: center; 
+}
+
+.options-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+}
+
+.options-grid button {
+  font-size: 16px;
+  padding: 3px;
+  border-radius: 50%;
+  border: 1px solid #ccc;
+  cursor: pointer;
+  background: white;
+}
+
+.options-grid button:hover {
+  transform: scale(1.15);
+  background: #f0f0f0;
+}
+
+
+@media (max-width: 768px) {
+  .board-wrapper {
+    flex-direction: column;
+    align-items: center;
+    gap: 40px;
+  }
+
+  .hex {
+    width: 80px;
+    height: 80px;
+  }
+
+  .number {
+    font-size: 12px;
+    padding: 3px 6px;
+  }
+
+  .player-info, .roll-log {
+    width: 90%;
+    max-width: 320px;
+  }
+
+  .button-row {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .dice-btn, .start-btn {
+    width: 100%;
+    max-width: 250px;
+    font-size: 14px;
+    padding: 10px;
+  }
+}
+
+
+@media (max-width: 480px) {
+  .hex {
+    width: 65px;
+    height: 65px;
+  }
+
+  .number {
+    font-size: 10px;
+    padding: 2px 5px;
+  }
+
+  .dice-btn, .start-btn {
+    font-size: 12px;
+    padding: 8px;
+    border-radius: 5px;
+  }
+
+  .options-grid button {
+    font-size: 14px;
+    padding: 2px;
+  }
+}
+
+.controls-top {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  margin-bottom: 20px;
+  margin-top: 250px;
+}
+
+.small-btn {
+  padding: 6px 14px;
+  font-size: 14px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  background-color: #444360;
+  color: white;
+  transition: background 0.3s, transform 0.2s;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.15);
+}
+
+.small-btn:hover {
+  background-color: #5d5c7a;
+  transform: scale(1.05);
+}
+
+.small-btn:active {
+  transform: scale(0.95);
+}
+
+@keyframes shake {
+  0% { transform: translate(0, 0) rotate(0); }
+  25% { transform: translate(-3px, 0) rotate(-5deg); }
+  50% { transform: translate(3px, 0) rotate(5deg); }
+  75% { transform: translate(-3px, 0) rotate(-5deg); }
+  100% { transform: translate(0, 0) rotate(0); }
+}
+
+.dice-shake {
+  animation: shake 0.5s ease;
+}
+
+.hex.player1 {
+  border: 4px solid #e74c3c; /* crvena */
+  box-shadow: 0 0 12px rgba(231, 76, 60, 0.7);
+}
+
+.hex.player2 {
+  border: 4px solid #3498db; /* plava */
+  box-shadow: 0 0 12px rgba(52, 152, 219, 0.7);
+}
+
+.hex.owned.player-1 {
+  border: 3px solid blue;
+  border-radius: 10px;
+}
+
+.hex.owned.player-2 {
+  border: 3px solid red;
+  border-radius: 10px;
+}

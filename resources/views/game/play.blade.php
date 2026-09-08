@@ -1,0 +1,54 @@
+@extends('layouts.app')
+
+@section('title', 'Igraj')
+
+@push('styles')
+<link rel="stylesheet" href="{{ asset('css/igraj.css') }}">
+@endpush
+
+@section('content')
+<div class="board-wrapper">
+    <div class="left-column">
+        <div id="setup-controls">
+            <button class="dice-btn" id="btn-roll-setup">Baci kocku i dodeli brojeve</button>
+            <p id="setup-roll-result"></p>
+            <button class="start-btn" id="btn-start-game">Počni igru</button>
+        </div>
+
+        <div id="game-controls" style="display:none;">
+            <div class="button-row">
+                <div class="dice-icon" id="dice-icon">
+                    <span style="font-size: 32px; cursor: pointer;">🎲</span>
+                </div>
+                <button class="start-btn" id="btn-finish-game">Završi partiju</button>
+            </div>
+
+            <div class="player-info" id="player-info"></div>
+
+            <div class="roll-log">
+                <h3>Poslednja bacanja:</h3>
+                <ul id="roll-log-list"></ul>
+            </div>
+        </div>
+    </div>
+
+    <div class="board" id="board"></div>
+
+    <div class="controls-top">
+        <button id="btn-save" class="small-btn">Sačuvaj</button>
+        <button id="btn-load" class="small-btn">Učitaj</button>
+        <button id="btn-reset" class="small-btn">Reset</button>
+    </div>
+</div>
+@endsection
+
+@push('scripts')
+<script>
+    window.CATAN_CONFIG = {
+        csrfToken: document.querySelector('meta[name="csrf-token"]').content,
+        imagesBase: "{{ asset('images') }}",
+        apiBase: "{{ url('/api') }}",
+    };
+</script>
+<script src="{{ asset('js/game.js') }}"></script>
+@endpush
