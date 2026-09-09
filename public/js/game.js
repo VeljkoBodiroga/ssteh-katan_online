@@ -772,7 +772,12 @@
     document.getElementById("btn-next-turn").style.display = "inline-block";
   }
 
-  // ---------- Zajednicko ----------
+    function calculatePoints(playerId) {
+    return state.playerTromedje
+      .filter((t) => t.id === playerId)
+      .reduce((sum, t) => sum + (t.type === "city" ? 2 : 1), 0);
+  }
+
   function renderPlayers() {
     const el = document.getElementById("player-info");
     el.innerHTML = "";
@@ -780,7 +785,7 @@
     visiblePlayers.forEach((p) => {
       const box = document.createElement("div");
       box.className = "player-box";
-      box.innerHTML = `<h3 style="margin:0">${p.name}</h3>
+      box.innerHTML = `<h3 style="margin:0">${p.name} — 🏆 ${calculatePoints(p.id)} poena</h3>
         <p>🌲 ${p.resources.drvo || 0} 🐑 ${p.resources.ovca || 0} 🌾 ${p.resources.psenica || 0} 🧱 ${p.resources.cigla || 0} 🪨 ${p.resources.kamen || 0}</p>`;
       el.appendChild(box);
     });
