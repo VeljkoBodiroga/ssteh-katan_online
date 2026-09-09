@@ -263,18 +263,33 @@ foreach (($bs['playerTromedje'] ?? []) as $t) {
             $sum = random_int(1, 6) + random_int(1, 6);
         }
 
-        foreach (($bs['playerTromedje'] ?? []) as $t) {
-            $gained = [];
-            $amount = ($t['type'] ?? 'settlement') === 'city' ? 2 : 1; // grad daje duplo resursa
-            foreach ($t['fields'] as $idx) {
-                $num = $bs['numbers'][$idx] ?? null;
-                $res = $bs['tiles'][$idx] ?? null;
-                if ($num == $sum && $res && $res !== 'pustinja') {
-                    $gained[$res] = ($gained[$res] ?? 0) + $amount;
+                if ($sum == 7) {
+            // Na 7 se NE dele resursi - umesto toga, svako ko ima vise od 7 karata
+            // mora da odbaci pola (zaokruzeno na dole).
+            $mustDiscard = [];
+            $allPivots = DB::table('game_players')->where('game_id', $game->id)->get();
+            foreach ($allPivots as $pivot) {
+                $resources = $pivot->resources ? json_decode($pivot->resources, true) : [];
+                $total = array_sum($resources);
+                if ($total > 7) {
+                    $mustDiscard[$pivot->user_id] = intdiv($total, 2);
                 }
             }
-            if ($gained) {
-                $this->addResources($game, $t['id'], $gained);
+            $bs['mustDiscard'] = $mustDiscard;
+        } else {
+            foreach (($bs['playerTromedje'] ?? []) as $t) {
+                $gained = [];
+                $amount = ($t['type'] ?? 'settlement') === 'city' ? 2 : 1; // grad daje duplo resursa
+                foreach ($t['fields'] as $idx) {
+                    $num = $bs['numbers'][$idx] ?? null;
+                    $res = $bs['tiles'][$idx] ?? null;
+                    if ($num == $sum && $res && $res !== 'pustinja') {
+                        $gained[$res] = ($gained[$res] ?? 0) + $amount;
+                    }
+                }
+                if ($gained) {
+                    $this->addResources($game, $t['id'], $gained);
+                }
             }
         }
 
@@ -283,6 +298,49 @@ foreach (($bs['playerTromedje'] ?? []) as $t) {
         $bs['log'] = array_slice($log, 0, 4);
         $bs['hasRolledThisTurn'] = true;
 
+        $game->update(['board_state' => $bs]);
+
+        return response()->json($this->present($game->fresh()));
+    }
+
+    // POST /api/games/{game}/discard — igrac odbacuje karte posle bacenog 7
+    public function discard(Request $request, Game $game)
+    {
+        $this->authorizeAccess($game);
+
+        $data = $request->validate([
+            'resources' => ['required', 'array'],
+            'resources.drvo' => ['integer', 'min:0'],
+            'resources.ovca' => ['integer', 'min:0'],
+            'resources.psenica' => ['integer', 'min:0'],
+            'resources.cigla' => ['integer', 'min:0'],
+            'resources.kamen' => ['integer', 'min:0'],
+        ]);
+
+        $bs = $game->board_state ?? [];
+        $mustDiscard = $bs['mustDiscard'] ?? [];
+        $userId = $request->user()->id;
+
+        abort_unless(array_key_exists($userId, $mustDiscard), 422, 'Ne duguješ odbacivanje karata.');
+
+        $required = $mustDiscard[$userId];
+        $totalGiven = array_sum($data['resources']);
+        abort_unless($totalGiven === $required, 422, "Moraš odbaciti tačno {$required} karata.");
+
+        $pivot = DB::table('game_players')->where('game_id', $game->id)->where('user_id', $userId)->first();
+        $resources = $pivot && $pivot->resources ? json_decode($pivot->resources, true) : [];
+        foreach ($data['resources'] as $res => $qty) {
+            abort_if(($resources[$res] ?? 0) < $qty, 422, 'Nemaš toliko tog resursa.');
+        }
+
+        $delta = [];
+        foreach ($data['resources'] as $res => $qty) {
+            $delta[$res] = -$qty;
+        }
+        $this->addResources($game, $userId, $delta);
+
+        unset($mustDiscard[$userId]);
+        $bs['mustDiscard'] = $mustDiscard;
         $game->update(['board_state' => $bs]);
 
         return response()->json($this->present($game->fresh()));

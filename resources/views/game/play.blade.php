@@ -74,6 +74,16 @@
                 <button class="start-btn" id="btn-finish-game">Završi partiju</button>
             </div>
 
+                <div class="discard-panel" id="discard-panel" style="display:none;">
+                <p id="discard-info" style="font-weight:600;"></p>
+                <label>🌲 Drvo <input type="number" id="discard-drvo" min="0" value="0"></label>
+                <label>🐑 Ovca <input type="number" id="discard-ovca" min="0" value="0"></label>
+                <label>🌾 Pšenica <input type="number" id="discard-psenica" min="0" value="0"></label>
+                <label>🧱 Cigla <input type="number" id="discard-cigla" min="0" value="0"></label>
+                <label>🪨 Kamen <input type="number" id="discard-kamen" min="0" value="0"></label>
+                <button class="start-btn" id="btn-confirm-discard">Potvrdi odbacivanje</button>
+            </div>
+
             <div class="player-info" id="player-info"></div>
 
             <div class="roll-log">

@@ -63,6 +63,7 @@
     pendingRoadVertex: null,
     playTurnIndex: 0,
     hasRolledThisTurn: false,
+    mustDiscard: {},
     roadBuildMode: false,
     settlementBuildMode: false,
     cityBuildMode: false,
@@ -445,12 +446,29 @@
     }
   }
 
-  // ---------- MULTIPLAYER: igranje (kocka -> (gradnja) -> Dalje) ----------
+    // ---------- MULTIPLAYER: igranje (kocka -> (gradnja) -> Dalje) ----------
   function renderPlayingMultiplayer() {
     const currentUserId = state.turnOrder[state.playTurnIndex % state.turnOrder.length];
     const myTurn = currentUserId === cfg.currentUserId;
-
     const turnEl = document.getElementById("turn-indicator-playing");
+    const pendingIds = Object.keys(state.mustDiscard || {});
+
+    if (pendingIds.length > 0) {
+      const names = pendingIds.map((id) => playerName(Number(id))).join(", ");
+      turnEl.textContent = `⚠️ Pao je 7! Čeka se odbacivanje karata: ${names}`;
+      document.getElementById("dice-icon").style.display = "none";
+      document.getElementById("btn-next-turn").style.display = "none";
+      document.getElementById("btn-build-road").style.display = "none";
+      document.getElementById("btn-build-settlement").style.display = "none";
+      document.getElementById("btn-build-city").style.display = "none";
+      document.getElementById("btn-trade-resources").style.display = "none";
+      document.getElementById("trade-panel").style.display = "none";
+      renderDiscardPanel();
+      return;
+    }
+
+    document.getElementById("discard-panel").style.display = "none";
+
     if (!myTurn) {
       turnEl.textContent = `⏳ Na potezu: ${playerName(currentUserId)} — čeka se...`;
     } else if (!state.hasRolledThisTurn) {
@@ -463,7 +481,7 @@
     document.getElementById("btn-next-turn").style.display = myTurn && state.hasRolledThisTurn ? "inline-block" : "none";
     document.getElementById("btn-build-road").style.display = myTurn && state.hasRolledThisTurn ? "inline-block" : "none";
     document.getElementById("btn-build-settlement").style.display = myTurn && state.hasRolledThisTurn ? "inline-block" : "none";
-        document.getElementById("btn-build-city").style.display = myTurn && state.hasRolledThisTurn ? "inline-block" : "none";
+    document.getElementById("btn-build-city").style.display = myTurn && state.hasRolledThisTurn ? "inline-block" : "none";
     document.getElementById("btn-trade-resources").style.display = myTurn && state.hasRolledThisTurn ? "inline-block" : "none";
 
     if (!myTurn || !state.hasRolledThisTurn) {
@@ -471,6 +489,40 @@
       state.settlementBuildMode = false;
       state.cityBuildMode = false;
       document.getElementById("trade-panel").style.display = "none";
+    }
+  }
+
+  function renderDiscardPanel() {
+    const panel = document.getElementById("discard-panel");
+    const myRequired = state.mustDiscard[cfg.currentUserId];
+    if (myRequired === undefined) {
+      panel.style.display = "none";
+      return;
+    }
+    const me = state.players.find((p) => p.id === cfg.currentUserId);
+    panel.style.display = "flex";
+    document.getElementById("discard-info").textContent = `Moraš odbaciti ${myRequired} karata:`;
+    ["drvo", "ovca", "psenica", "cigla", "kamen"].forEach((res) => {
+      const input = document.getElementById(`discard-${res}`);
+      const max = me ? me.resources[res] || 0 : 0;
+      input.max = max;
+      if (Number(input.value) > max) input.value = max;
+    });
+  }
+
+  async function confirmDiscard() {
+    const resources = {};
+    ["drvo", "ovca", "psenica", "cigla", "kamen"].forEach((res) => {
+      resources[res] = Number(document.getElementById(`discard-${res}`).value) || 0;
+    });
+    try {
+      const game = await apiFetch(`/games/${state.gameId}/discard`, {
+        method: "POST",
+        body: JSON.stringify({ resources }),
+      });
+      applyServerState(game);
+    } catch (e) {
+      alert("Greška: " + e.message);
     }
   }
 
@@ -604,6 +656,7 @@
     state.pendingRoadVertex = bs.pendingRoadVertex ?? null;
     state.playTurnIndex = bs.playTurnIndex || 0;
     state.hasRolledThisTurn = bs.hasRolledThisTurn || false;
+    state.mustDiscard = bs.mustDiscard || {};
     state.playerTromedje = bs.playerTromedje || [];
     state.roads = bs.roads || [];
     state.log = bs.log || [];
@@ -835,6 +888,7 @@
     document.getElementById("btn-build-city").addEventListener("click", toggleCityBuildMode);
     document.getElementById("btn-trade-resources").addEventListener("click", toggleTradePanel);
     document.getElementById("btn-confirm-trade").addEventListener("click", confirmTrade);
+    document.getElementById("btn-confirm-discard").addEventListener("click", confirmDiscard);
     document.getElementById("btn-load").style.display = "none";
     document.getElementById("btn-save").style.display = "none";
     pollLoop();
