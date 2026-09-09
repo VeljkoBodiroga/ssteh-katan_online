@@ -38,10 +38,35 @@
                 </div>
             </div>
 
-            <div class="build-actions">
+                        <div class="build-actions">
                 <button class="start-btn" id="btn-build-road" style="display:none;">Sagradi put</button>
                 <button class="start-btn" id="btn-build-settlement" style="display:none;">Sagradi selo</button>
                 <button class="start-btn" id="btn-build-city" style="display:none;">Izgradi grad</button>
+                <button class="start-btn" id="btn-trade-resources" style="display:none;">Razmeni resurse (4:1)</button>
+            </div>
+
+            <div class="trade-panel" id="trade-panel" style="display:none;">
+                <label>
+                    Daj 4x:
+                    <select id="trade-give">
+                        <option value="drvo">🌲 Drvo</option>
+                        <option value="ovca">🐑 Ovca</option>
+                        <option value="psenica">🌾 Pšenica</option>
+                        <option value="cigla">🧱 Cigla</option>
+                        <option value="kamen">🪨 Kamen</option>
+                    </select>
+                </label>
+                <label>
+                    Dobij 1x:
+                    <select id="trade-get">
+                        <option value="drvo">🌲 Drvo</option>
+                        <option value="ovca">🐑 Ovca</option>
+                        <option value="psenica">🌾 Pšenica</option>
+                        <option value="cigla">🧱 Cigla</option>
+                        <option value="kamen">🪨 Kamen</option>
+                    </select>
+                </label>
+                <button class="start-btn" id="btn-confirm-trade">Potvrdi razmenu</button>
             </div>
 
             <div class="button-row">

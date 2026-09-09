@@ -407,6 +407,36 @@ class GameApiController extends Controller
         return response()->json($this->present($game->fresh()));
     }
 
+    // POST /api/games/{game}/trade — razmena 4 istog resursa za 1 drugi (banka, 4:1)
+    public function trade(Request $request, Game $game)
+    {
+        $this->authorizeAccess($game);
+
+        $data = $request->validate([
+            'give' => ['required', 'in:drvo,ovca,psenica,cigla,kamen'],
+            'get' => ['required', 'in:drvo,ovca,psenica,cigla,kamen'],
+        ]);
+
+        abort_if($data['give'] === $data['get'], 422, 'Izaberi različite resurse.');
+
+        $bs = $game->board_state ?? [];
+        abort_unless(($bs['phase'] ?? null) === 'playing', 422, 'Partija nije u toku.');
+
+        $turnOrder = $bs['turnOrder'] ?? [];
+        $playIdx = $bs['playTurnIndex'] ?? 0;
+        $currentUserId = $turnOrder[$playIdx % count($turnOrder)];
+        abort_unless($currentUserId === $request->user()->id, 403, 'Nije tvoj red.');
+
+        $pivot = DB::table('game_players')->where('game_id', $game->id)->where('user_id', $currentUserId)->first();
+        $resources = $pivot && $pivot->resources ? json_decode($pivot->resources, true) : [];
+        abort_if(($resources[$data['give']] ?? 0) < 4, 422, 'Nemaš dovoljno resursa za razmenu (potrebno 4).');
+
+        $this->addResources($game, $currentUserId, [$data['give'] => -4, $data['get'] => 1]);
+
+        return response()->json($this->present($game->fresh()));
+    }
+
+
     // DELETE /api/games/{game} — brise partiju (vlasnik ili admin)
     public function destroy(Request $request, Game $game)
     {

@@ -427,12 +427,14 @@
     document.getElementById("btn-next-turn").style.display = myTurn && state.hasRolledThisTurn ? "inline-block" : "none";
     document.getElementById("btn-build-road").style.display = myTurn && state.hasRolledThisTurn ? "inline-block" : "none";
     document.getElementById("btn-build-settlement").style.display = myTurn && state.hasRolledThisTurn ? "inline-block" : "none";
-    document.getElementById("btn-build-city").style.display = myTurn && state.hasRolledThisTurn ? "inline-block" : "none";
+        document.getElementById("btn-build-city").style.display = myTurn && state.hasRolledThisTurn ? "inline-block" : "none";
+    document.getElementById("btn-trade-resources").style.display = myTurn && state.hasRolledThisTurn ? "inline-block" : "none";
 
     if (!myTurn || !state.hasRolledThisTurn) {
       state.roadBuildMode = false;
       state.settlementBuildMode = false;
       state.cityBuildMode = false;
+      document.getElementById("trade-panel").style.display = "none";
     }
   }
 
@@ -502,6 +504,29 @@
       alert("Greška: " + e.message);
     }
   }
+
+  function toggleTradePanel() {
+    const panel = document.getElementById("trade-panel");
+    panel.style.display = panel.style.display === "none" ? "flex" : "none";
+  }
+
+  async function confirmTrade() {
+    const give = document.getElementById("trade-give").value;
+    const get = document.getElementById("trade-get").value;
+    if (give === get) return alert("Izaberi različite resurse.");
+    try {
+      const game = await apiFetch(`/games/${state.gameId}/trade`, {
+        method: "POST",
+        body: JSON.stringify({ give, get }),
+      });
+      document.getElementById("trade-panel").style.display = "none";
+      applyServerState(game);
+    } catch (e) {
+      alert("Greška: " + e.message);
+    }
+  }
+
+
 
   async function endTurnMultiplayer() {
     try {
@@ -765,6 +790,8 @@
     document.getElementById("btn-build-road").addEventListener("click", toggleRoadBuildMode);
     document.getElementById("btn-build-settlement").addEventListener("click", toggleSettlementBuildMode);
     document.getElementById("btn-build-city").addEventListener("click", toggleCityBuildMode);
+    document.getElementById("btn-trade-resources").addEventListener("click", toggleTradePanel);
+    document.getElementById("btn-confirm-trade").addEventListener("click", confirmTrade);
     document.getElementById("btn-load").style.display = "none";
     document.getElementById("btn-save").style.display = "none";
     pollLoop();
@@ -773,6 +800,7 @@
     document.getElementById("btn-build-road").style.display = "none";
     document.getElementById("btn-build-settlement").style.display = "none";
     document.getElementById("btn-build-city").style.display = "none";
+    document.getElementById("btn-trade-resources").style.display = "none";
     document.getElementById("btn-load").addEventListener("click", async () => {
       if (!state.gameId) return alert("Nema aktivne partije za učitavanje.");
       try {
