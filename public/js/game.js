@@ -104,12 +104,9 @@
       row.className = "row";
       for (let i = 0; i < count; i++) {
         const idx = counter++;
-        const owner = state.playerTromedje.find((t) => t.fields.includes(idx));
-        const ownerClass = owner ? `owned player-${owner.id}` : "";
-
         const hex = document.createElement("div");
-        hex.className = `hex ${ownerClass}`;
-
+        hex.className = "hex";
+        hex.dataset.idx = idx;
         if (state.tiles[idx]) {
           const img = document.createElement("img");
           img.src = resourceImages[state.tiles[idx]];
@@ -137,7 +134,44 @@
       }
       boardEl.appendChild(row);
     });
+    renderSettlementMarkers();
   }
+
+const PLAYER_COLORS = ["#3498db", "#e74c3c", "#2ecc71", "#f39c12"];
+
+  function colorForPlayer(playerId) {
+    const idx = state.players.findIndex((p) => p.id === playerId);
+    return PLAYER_COLORS[idx >= 0 ? idx % PLAYER_COLORS.length : 0];
+  }
+
+  function renderSettlementMarkers() {
+    const boardEl = document.getElementById("board");
+    const boardRect = boardEl.getBoundingClientRect();
+
+    state.playerTromedje.forEach((t) => {
+      const rects = t.fields
+        .map((idx) => boardEl.querySelector(`[data-idx="${idx}"]`))
+        .filter(Boolean)
+        .map((el) => el.getBoundingClientRect());
+
+      if (rects.length === 0) return;
+
+      // Teme je (priblizno) centroid centara tri polja koja dodiruje.
+      const centerX = rects.reduce((sum, r) => sum + (r.left + r.width / 2), 0) / rects.length - boardRect.left;
+      const centerY = rects.reduce((sum, r) => sum + (r.top + r.height / 2), 0) / rects.length - boardRect.top;
+
+      const marker = document.createElement("div");
+      marker.className = "settlement-marker";
+      marker.style.left = `${centerX}px`;
+      marker.style.top = `${centerY}px`;
+      marker.style.background = colorForPlayer(t.id);
+      marker.title = playerName(t.id);
+      marker.textContent = "🏠";
+      boardEl.appendChild(marker);
+    });
+  }
+
+
 
   function handleSelect(idx, res) {
     if (MULTIPLAYER && !state.isCreator) return;
