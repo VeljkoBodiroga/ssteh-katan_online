@@ -156,10 +156,14 @@ class GameApiController extends Controller
 
         $fields = self::TROMEDJE[$data['tri_index']];
 
-        foreach (($bs['playerTromedje'] ?? []) as $t) {
+foreach (($bs['playerTromedje'] ?? []) as $t) {
             $common = array_intersect($fields, $t['fields']);
             abort_if(count($common) >= 2, 422, 'Taj teren je zauzet ili je sused već zauzetom terenu.');
         }
+
+        // Broj vec izabranih sela ovog igraca PRE ovog izbora - u pravoj Catan igri
+        // pocetni resursi se dobijaju samo za DRUGO selo, ne za prvo.
+        $priorCount = collect($bs['playerTromedje'] ?? [])->where('id', $currentUserId)->count();
 
         $bs['playerTromedje'][] = ['id' => $currentUserId, 'fields' => array_values($fields), 'type' => 'settlement', 'tri_index' => $data['tri_index']];
         $bs['pickTurnIndex'] = $pickIdx + 1;
@@ -169,6 +173,19 @@ class GameApiController extends Controller
         }
 
         $game->update(['board_state' => $bs]);
+
+        if ($priorCount >= 1) {
+            $starting = [];
+            foreach ($fields as $idx) {
+                $res = $bs['tiles'][$idx] ?? null;
+                if ($res && $res !== 'pustinja') {
+                    $starting[$res] = ($starting[$res] ?? 0) + 1;
+                }
+            }
+            if ($starting) {
+                $this->addResources($game, $currentUserId, $starting);
+            }
+        }
 
         return response()->json($this->present($game->fresh()));
     }
