@@ -202,11 +202,12 @@ class GameApiController extends Controller
 
         foreach (($bs['playerTromedje'] ?? []) as $t) {
             $gained = [];
+            $amount = ($t['type'] ?? 'settlement') === 'city' ? 2 : 1; // grad daje duplo resursa
             foreach ($t['fields'] as $idx) {
                 $num = $bs['numbers'][$idx] ?? null;
                 $res = $bs['tiles'][$idx] ?? null;
                 if ($num == $sum && $res && $res !== 'pustinja') {
-                    $gained[$res] = ($gained[$res] ?? 0) + 1;
+                    $gained[$res] = ($gained[$res] ?? 0) + $amount;
                 }
             }
             if ($gained) {
