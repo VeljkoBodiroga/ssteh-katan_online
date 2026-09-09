@@ -172,7 +172,7 @@
     return { x, y };
   }
 
-  function renderSettlementMarkers() {
+    function renderSettlementMarkers() {
     const boardEl = document.getElementById("board");
     state.playerTromedje.forEach((t) => {
       // Nadji reprezentativno teme (prvi tromedje indeks ciji su fields === t.fields).
@@ -389,9 +389,11 @@
     document.getElementById("dice-icon").style.display = myTurn && !state.hasRolledThisTurn ? "block" : "none";
     document.getElementById("btn-next-turn").style.display = myTurn && state.hasRolledThisTurn ? "inline-block" : "none";
     document.getElementById("btn-build-road").style.display = myTurn && state.hasRolledThisTurn ? "inline-block" : "none";
+    document.getElementById("btn-build-city").style.display = myTurn && state.hasRolledThisTurn ? "inline-block" : "none";
 
     if (!myTurn || !state.hasRolledThisTurn) {
       state.roadBuildMode = false;
+      state.cityBuildMode = false;
     }
   }
 
@@ -420,6 +422,24 @@
         body: JSON.stringify({ edge_index: edgeIdx }),
       });
       state.roadBuildMode = false;
+      applyServerState(game);
+    } catch (e) {
+      alert("Greška: " + e.message);
+    }
+  }
+
+    function toggleCityBuildMode() {
+    state.cityBuildMode = !state.cityBuildMode;
+    renderBoard();
+  }
+
+  async function buildCityMultiplayer(triIdx) {
+    try {
+      const game = await apiFetch(`/games/${state.gameId}/build-city`, {
+        method: "POST",
+        body: JSON.stringify({ tri_index: triIdx }),
+      });
+      state.cityBuildMode = false;
       applyServerState(game);
     } catch (e) {
       alert("Greška: " + e.message);
@@ -686,6 +706,7 @@
   if (MULTIPLAYER) {
     document.getElementById("btn-submit-board").addEventListener("click", submitBoard);
     document.getElementById("btn-build-road").addEventListener("click", toggleRoadBuildMode);
+    document.getElementById("btn-build-city").addEventListener("click", toggleCityBuildMode);
     document.getElementById("btn-load").style.display = "none";
     document.getElementById("btn-save").style.display = "none";
     pollLoop();

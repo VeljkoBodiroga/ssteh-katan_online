@@ -161,7 +161,7 @@ class GameApiController extends Controller
             abort_if(count($common) >= 2, 422, 'Taj teren je zauzet ili je sused već zauzetom terenu.');
         }
 
-        $bs['playerTromedje'][] = ['id' => $currentUserId, 'fields' => array_values($fields)];
+        $bs['playerTromedje'][] = ['id' => $currentUserId, 'fields' => array_values($fields), 'type' => 'settlement'];
         $bs['pickTurnIndex'] = $pickIdx + 1;
 
         if ($bs['pickTurnIndex'] >= $totalPicks) {
@@ -291,6 +291,52 @@ class GameApiController extends Controller
 
         return response()->json($this->present($game->fresh()));
     }
+
+    // POST /api/games/{game}/build-city — unapredjenje sela u grad (2 psenica + 3 kamen)
+    public function buildCity(Request $request, Game $game)
+    {
+        $this->authorizeAccess($game);
+
+        $data = $request->validate([
+            'tri_index' => ['required', 'integer', 'min:0', 'max:23'],
+        ]);
+
+        $bs = $game->board_state ?? [];
+        abort_unless(($bs['phase'] ?? null) === 'playing', 422, 'Partija nije u toku.');
+
+        $turnOrder = $bs['turnOrder'] ?? [];
+        $playIdx = $bs['playTurnIndex'] ?? 0;
+        $currentUserId = $turnOrder[$playIdx % count($turnOrder)];
+        abort_unless($currentUserId === $request->user()->id, 403, 'Nije tvoj red.');
+
+        $fields = self::TROMEDJE[$data['tri_index']];
+        $playerTromedje = $bs['playerTromedje'] ?? [];
+
+        $foundIndex = null;
+        foreach ($playerTromedje as $i => $t) {
+            if ($t['fields'] === array_values($fields)) {
+                $foundIndex = $i;
+                break;
+            }
+        }
+        abort_if(is_null($foundIndex), 422, 'Tu ne postoji tvoje selo.');
+        abort_unless($playerTromedje[$foundIndex]['id'] === $currentUserId, 403, 'To nije tvoje selo.');
+        abort_if(($playerTromedje[$foundIndex]['type'] ?? 'settlement') === 'city', 422, 'Tu je već izgrađen grad.');
+
+        $pivot = DB::table('game_players')->where('game_id', $game->id)->where('user_id', $currentUserId)->first();
+        $resources = $pivot && $pivot->resources ? json_decode($pivot->resources, true) : [];
+        abort_if(($resources['psenica'] ?? 0) < 2 || ($resources['kamen'] ?? 0) < 3, 422, 'Nemaš dovoljno resursa (2 pšenice + 3 kamena).');
+
+        $playerTromedje[$foundIndex]['type'] = 'city';
+        $bs['playerTromedje'] = $playerTromedje;
+        $game->update(['board_state' => $bs]);
+
+        $this->addResources($game, $currentUserId, ['psenica' => -2, 'kamen' => -3]);
+
+        return response()->json($this->present($game->fresh()));
+    }
+
+
 
     // POST /api/games/{game}/end-turn — igrac na potezu zavrsava potez i predaje ga sledecem
     public function endTurn(Request $request, Game $game)
