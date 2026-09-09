@@ -161,7 +161,7 @@ class GameApiController extends Controller
             abort_if(count($common) >= 2, 422, 'Taj teren je zauzet ili je sused već zauzetom terenu.');
         }
 
-        $bs['playerTromedje'][] = ['id' => $currentUserId, 'fields' => array_values($fields), 'type' => 'settlement'];
+        $bs['playerTromedje'][] = ['id' => $currentUserId, 'fields' => array_values($fields), 'type' => 'settlement', 'tri_index' => $data['tri_index']];
         $bs['pickTurnIndex'] = $pickIdx + 1;
 
         if ($bs['pickTurnIndex'] >= $totalPicks) {
@@ -254,18 +254,14 @@ class GameApiController extends Controller
 
         // Provera povezanosti: bar jedno teme ivice mora biti moje selo, ili kraj mog
         // vec postojeceg puta (a ta tacka ne sme biti tudje selo - "ne sece kucu drugog igraca").
-        $mySettlementVertices = collect($bs['playerTromedje'] ?? [])
+                $mySettlementVertexIndices = collect($bs['playerTromedje'] ?? [])
             ->where('id', $currentUserId)
-            ->pluck('fields')
-            ->flatten()
-            ->unique();
+            ->pluck('tri_index');
 
         // Sva temena gde postoji BILO CIJE selo, da znamo gde se moj put "prekida".
-        $enemySettlementVertices = collect($bs['playerTromedje'] ?? [])
+        $enemySettlementVertexIndices = collect($bs['playerTromedje'] ?? [])
             ->where('id', '!=', $currentUserId)
-            ->pluck('fields')
-            ->flatten()
-            ->unique();
+            ->pluck('tri_index');
 
         // Temena na krajevima MOJIH postojecih puteva.
         $myRoadVertices = collect($roads)
@@ -275,8 +271,8 @@ class GameApiController extends Controller
 
         $connected = false;
         foreach ($edge as $vertex) {
-            $isMySettlement = $mySettlementVertices->contains($vertex);
-            $isMyRoadEnd = $myRoadVertices->contains($vertex) && ! $enemySettlementVertices->contains($vertex);
+            $isMySettlement = $mySettlementVertexIndices->contains($vertex);
+            $isMyRoadEnd = $myRoadVertices->contains($vertex) && ! $enemySettlementVertexIndices->contains($vertex);
             if ($isMySettlement || $isMyRoadEnd) {
                 $connected = true;
                 break;
@@ -335,7 +331,7 @@ class GameApiController extends Controller
             abort_if(($resources[$need] ?? 0) < 1, 422, 'Nemaš dovoljno resursa (1 drvo + 1 cigla + 1 ovca + 1 pšenica).');
         }
 
-        $playerTromedje[] = ['id' => $currentUserId, 'fields' => array_values($fields), 'type' => 'settlement'];
+        $playerTromedje[] = ['id' => $currentUserId, 'fields' => array_values($fields), 'type' => 'settlement', 'tri_index' => $data['tri_index']];
         $bs['playerTromedje'] = $playerTromedje;
         $game->update(['board_state' => $bs]);
 
@@ -367,7 +363,7 @@ class GameApiController extends Controller
 
         $foundIndex = null;
         foreach ($playerTromedje as $i => $t) {
-            if ($t['fields'] === array_values($fields)) {
+            if (($t['tri_index'] ?? null) === $data['tri_index']) {
                 $foundIndex = $i;
                 break;
             }

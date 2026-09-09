@@ -178,7 +178,7 @@
   function renderSettlementMarkers() {
     const boardEl = document.getElementById("board");
     state.playerTromedje.forEach((t) => {
-      const triIdx = tromedje.findIndex((f) => f.length === t.fields.length && f.every((v, i) => v === t.fields[i]));
+      const triIdx = t.tri_index !== undefined ? t.tri_index : tromedje.findIndex((f) => f.length === t.fields.length && f.every((v, i) => v === t.fields[i]));
       const pos = triIdx >= 0 ? getVertexPixelPosition(triIdx) : null;
       if (!pos) return;
 
@@ -338,10 +338,10 @@
 
   // Isti algoritam kao na serveru: koje ivice smem da gradim (nadovezuju se na moje
   // selo ili moj postojeci put, a ne prolaze kroz tudje selo).
-  function availableRoadEdges() {
+    function availableRoadEdges() {
     const myId = cfg.currentUserId;
-    const mySettlementVerts = new Set(state.playerTromedje.filter((t) => t.id === myId).flatMap((t) => t.fields));
-    const enemyVerts = new Set(state.playerTromedje.filter((t) => t.id !== myId).flatMap((t) => t.fields));
+    const mySettlementVertIndices = new Set(state.playerTromedje.filter((t) => t.id === myId).map((t) => t.tri_index));
+    const enemySettlementVertIndices = new Set(state.playerTromedje.filter((t) => t.id !== myId).map((t) => t.tri_index));
     const builtSet = new Set(state.roads.map((r) => r.edge_index));
 
     // Vertex indeksi (tromedje indeksi) na krajevima mojih vec izgradjenih puteva.
@@ -354,9 +354,8 @@
       .filter(({ idx, e }) => {
         if (builtSet.has(idx)) return false;
         return e.some((triIdx) => {
-          const fields = tromedje[triIdx];
-          const isMySettlement = fields.some((f) => mySettlementVerts.has(f));
-          const isEnemySettlement = fields.some((f) => enemyVerts.has(f));
+          const isMySettlement = mySettlementVertIndices.has(triIdx);
+          const isEnemySettlement = enemySettlementVertIndices.has(triIdx);
           const isMyRoadEnd = myRoadVertIndices.has(triIdx) && !isEnemySettlement;
           return isMySettlement || isMyRoadEnd;
         });
