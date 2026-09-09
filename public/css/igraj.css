@@ -346,3 +346,27 @@
   from { transform: translate(-50%, -50%) scale(1); }
   to { transform: translate(-50%, -50%) scale(1.15); }
 }
+
+.build-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+  margin: 10px 0;
+}
+
+.settlement-slot {
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 3px dashed white;
+  background: rgba(255, 255, 255, 0.25);
+  transform: translate(-50%, -50%);
+  cursor: pointer;
+  z-index: 6;
+}
+
+.settlement-slot:hover {
+  background: rgba(255, 255, 255, 0.6);
+}

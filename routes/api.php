@@ -22,6 +22,7 @@ Route::middleware(['web', 'auth'])->group(function () {
     Route::post('/games/{game}/pick', [GameApiController::class, 'pick']);
     Route::post('/games/{game}/roll', [GameApiController::class, 'roll']);
     Route::post('/games/{game}/build-road', [GameApiController::class, 'buildRoad']);
+    Route::post('/games/{game}/build-settlement', [GameApiController::class, 'buildSettlement']);
     Route::post('/games/{game}/build-city', [GameApiController::class, 'buildCity']);
     Route::post('/games/{game}/end-turn', [GameApiController::class, 'endTurn']);
 });

@@ -293,6 +293,58 @@ class GameApiController extends Controller
         return response()->json($this->present($game->fresh()));
     }
 
+    // POST /api/games/{game}/build-settlement — novo selo tokom igre (1 drvo+1 cigla+1 ovca+1 psenica)
+    public function buildSettlement(Request $request, Game $game)
+    {
+        $this->authorizeAccess($game);
+
+        $data = $request->validate([
+            'tri_index' => ['required', 'integer', 'min:0', 'max:23'],
+        ]);
+
+        $bs = $game->board_state ?? [];
+        abort_unless(($bs['phase'] ?? null) === 'playing', 422, 'Partija nije u toku.');
+
+        $turnOrder = $bs['turnOrder'] ?? [];
+        $playIdx = $bs['playTurnIndex'] ?? 0;
+        $currentUserId = $turnOrder[$playIdx % count($turnOrder)];
+        abort_unless($currentUserId === $request->user()->id, 403, 'Nije tvoj red.');
+
+        $fields = self::TROMEDJE[$data['tri_index']];
+        $playerTromedje = $bs['playerTromedje'] ?? [];
+
+        // Pravilo razdaljine: ne sme deliti 2 zajednicka polja ni sa jednim postojecim
+        // naseljem/gradom (bilo cijim) - to znaci "susedno teme".
+        foreach ($playerTromedje as $t) {
+            $common = array_intersect($fields, $t['fields']);
+            abort_if(count($common) >= 2, 422, 'Selo je preblizu drugog naselja.');
+        }
+
+        // Mora biti povezano MOJIM putem (bar jedan moj put ima ovo teme kao kraj).
+        $roads = $bs['roads'] ?? [];
+        $myRoadVertices = collect($roads)
+            ->where('id', $currentUserId)
+            ->flatMap(fn ($r) => self::EDGES[$r['edge_index']])
+            ->unique();
+        abort_unless($myRoadVertices->contains($data['tri_index']), 422, 'Selo mora biti povezano tvojim putem.');
+
+        // Resursi.
+        $pivot = DB::table('game_players')->where('game_id', $game->id)->where('user_id', $currentUserId)->first();
+        $resources = $pivot && $pivot->resources ? json_decode($pivot->resources, true) : [];
+        foreach (['drvo', 'cigla', 'ovca', 'psenica'] as $need) {
+            abort_if(($resources[$need] ?? 0) < 1, 422, 'Nemaš dovoljno resursa (1 drvo + 1 cigla + 1 ovca + 1 pšenica).');
+        }
+
+        $playerTromedje[] = ['id' => $currentUserId, 'fields' => array_values($fields), 'type' => 'settlement'];
+        $bs['playerTromedje'] = $playerTromedje;
+        $game->update(['board_state' => $bs]);
+
+        $this->addResources($game, $currentUserId, ['drvo' => -1, 'cigla' => -1, 'ovca' => -1, 'psenica' => -1]);
+
+        return response()->json($this->present($game->fresh()));
+    }
+
+
     // POST /api/games/{game}/build-city — unapredjenje sela u grad (2 psenica + 3 kamen)
     public function buildCity(Request $request, Game $game)
     {

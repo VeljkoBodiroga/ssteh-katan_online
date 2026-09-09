@@ -62,6 +62,8 @@
     playTurnIndex: 0,
     hasRolledThisTurn: false,
     roadBuildMode: false,
+    settlementBuildMode: false,
+    cityBuildMode: false,
     roads: [],
     players:
       cfg.players && cfg.players.length > 0
@@ -154,6 +156,7 @@
 
     renderSettlementMarkers();
     renderRoadMarkers();
+    renderSettlementSlots();
   }
 
   // Tacna pozicija temena (vertex) = prosek centara tri polja koja dodiruje,
@@ -172,7 +175,7 @@
     return { x, y };
   }
 
-     function renderSettlementMarkers() {
+  function renderSettlementMarkers() {
     const boardEl = document.getElementById("board");
     state.playerTromedje.forEach((t) => {
       const triIdx = tromedje.findIndex((f) => f.length === t.fields.length && f.every((v, i) => v === t.fields[i]));
@@ -197,6 +200,7 @@
       boardEl.appendChild(marker);
     });
   }
+
   function renderRoadMarkers() {
     const boardEl = document.getElementById("board");
 
@@ -211,6 +215,34 @@
         drawRoadBar(e, "rgba(255,255,255,0.85)", true, () => buildRoadMultiplayer(idx));
       });
     }
+  }
+
+  function availableSettlementSpots() {
+    const myId = cfg.currentUserId;
+    const myRoadVertIndices = new Set(
+      state.roads.filter((r) => r.id === myId).flatMap((r) => edges[r.edge_index])
+    );
+    return tromedje
+      .map((fields, idx) => ({ idx, fields }))
+      .filter(({ idx, fields }) => {
+        if (!myRoadVertIndices.has(idx)) return false;
+        return !state.playerTromedje.some((t) => shareEdge(fields, t.fields));
+      });
+  }
+
+  function renderSettlementSlots() {
+    if (!state.settlementBuildMode) return;
+    const boardEl = document.getElementById("board");
+    availableSettlementSpots().forEach(({ idx }) => {
+      const pos = getVertexPixelPosition(idx);
+      if (!pos) return;
+      const slot = document.createElement("div");
+      slot.className = "settlement-slot";
+      slot.style.left = `${pos.x}px`;
+      slot.style.top = `${pos.y}px`;
+      slot.onclick = () => buildSettlementMultiplayer(idx);
+      boardEl.appendChild(slot);
+    });
   }
 
   function drawRoadBar(edgeVertices, color, clickable, onClick) {
@@ -231,8 +263,7 @@
     bar.className = clickable ? "road-marker road-slot" : "road-marker";
     bar.style.left = `${midX}px`;
     bar.style.top = `${midY}px`;
-    bar.style.width = `${length}px`;
-    bar.style.background = color;
+    bar.style.width = `${length}px`;    bar.style.background = color;
     bar.style.transform = `translate(-50%, -50%) rotate(${angle}deg)`;
     if (clickable) bar.onclick = onClick;
     boardEl.appendChild(bar);
@@ -243,7 +274,8 @@
     if (state.tiles[idx]) return;
     if (state.counts[res] >= resourceLimits[res]) {
       alert(`Nema više ${res}`);
-      return;    }
+      return;
+    }
     state.tiles[idx] = res;
     state.counts[res] += 1;
     renderBoard();
@@ -395,10 +427,12 @@
     document.getElementById("dice-icon").style.display = myTurn && !state.hasRolledThisTurn ? "block" : "none";
     document.getElementById("btn-next-turn").style.display = myTurn && state.hasRolledThisTurn ? "inline-block" : "none";
     document.getElementById("btn-build-road").style.display = myTurn && state.hasRolledThisTurn ? "inline-block" : "none";
+    document.getElementById("btn-build-settlement").style.display = myTurn && state.hasRolledThisTurn ? "inline-block" : "none";
     document.getElementById("btn-build-city").style.display = myTurn && state.hasRolledThisTurn ? "inline-block" : "none";
 
     if (!myTurn || !state.hasRolledThisTurn) {
       state.roadBuildMode = false;
+      state.settlementBuildMode = false;
       state.cityBuildMode = false;
     }
   }
@@ -434,7 +468,25 @@
     }
   }
 
-    function toggleCityBuildMode() {
+  function toggleSettlementBuildMode() {
+    state.settlementBuildMode = !state.settlementBuildMode;
+    renderBoard();
+  }
+
+  async function buildSettlementMultiplayer(triIdx) {
+    try {
+      const game = await apiFetch(`/games/${state.gameId}/build-settlement`, {
+        method: "POST",
+        body: JSON.stringify({ tri_index: triIdx }),
+      });
+      state.settlementBuildMode = false;
+      applyServerState(game);
+    } catch (e) {
+      alert("Greška: " + e.message);
+    }
+  }
+
+  function toggleCityBuildMode() {
     state.cityBuildMode = !state.cityBuildMode;
     renderBoard();
   }
@@ -476,8 +528,7 @@
     const bs = game.board_state;
 
     if (!bs) {
-      state.phase = "waiting-setup";
-      document.getElementById("setup-controls").style.display = state.isCreator ? "block" : "none";
+      state.phase = "waiting-setup";      document.getElementById("setup-controls").style.display = state.isCreator ? "block" : "none";
       document.getElementById("waiting-host-msg").style.display = state.isCreator ? "none" : "block";
       document.getElementById("picking-controls").style.display = "none";
       document.getElementById("game-controls").style.display = "none";
@@ -502,7 +553,8 @@
     if (bs.phase === "picking") {
       document.getElementById("picking-controls").style.display = "block";
       document.getElementById("game-controls").style.display = "none";
-      document.getElementById("btn-start-game").style.display = "none";      renderPickingMultiplayer();
+      document.getElementById("btn-start-game").style.display = "none";
+      renderPickingMultiplayer();
     } else if (bs.phase === "playing") {
       document.getElementById("picking-controls").style.display = "none";
       document.getElementById("game-controls").style.display = "block";
@@ -712,6 +764,7 @@
   if (MULTIPLAYER) {
     document.getElementById("btn-submit-board").addEventListener("click", submitBoard);
     document.getElementById("btn-build-road").addEventListener("click", toggleRoadBuildMode);
+    document.getElementById("btn-build-settlement").addEventListener("click", toggleSettlementBuildMode);
     document.getElementById("btn-build-city").addEventListener("click", toggleCityBuildMode);
     document.getElementById("btn-load").style.display = "none";
     document.getElementById("btn-save").style.display = "none";
@@ -719,6 +772,8 @@
   } else {
     document.getElementById("btn-start-game").addEventListener("click", finalizeGameHotseat);
     document.getElementById("btn-build-road").style.display = "none";
+    document.getElementById("btn-build-settlement").style.display = "none";
+    document.getElementById("btn-build-city").style.display = "none";
     document.getElementById("btn-load").addEventListener("click", async () => {
       if (!state.gameId) return alert("Nema aktivne partije za učitavanje.");
       try {

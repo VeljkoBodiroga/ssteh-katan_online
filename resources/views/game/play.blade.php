@@ -36,8 +36,15 @@
                 <div class="dice-icon" id="dice-icon">
                     <span style="font-size: 32px; cursor: pointer;">🎲</span>
                 </div>
+            </div>
+
+            <div class="build-actions">
                 <button class="start-btn" id="btn-build-road" style="display:none;">Sagradi put</button>
+                <button class="start-btn" id="btn-build-settlement" style="display:none;">Sagradi selo</button>
                 <button class="start-btn" id="btn-build-city" style="display:none;">Izgradi grad</button>
+            </div>
+
+            <div class="button-row">
                 <button class="start-btn" id="btn-next-turn" style="display:none;">Dalje</button>
                 <button class="start-btn" id="btn-finish-game">Završi partiju</button>
             </div>
