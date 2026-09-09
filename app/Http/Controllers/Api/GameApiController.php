@@ -122,6 +122,8 @@ class GameApiController extends Controller
                 'turnOrder' => $turnOrder,
                 'phase' => 'picking',
                 'pickTurnIndex' => 0,
+                'pickSubPhase' => 'settlement',
+                'pendingRoadVertex' => null,
                 'playTurnIndex' => 0,
                 'hasRolledThisTurn' => false,
                 'playerTromedje' => [],
@@ -160,17 +162,16 @@ foreach (($bs['playerTromedje'] ?? []) as $t) {
             $common = array_intersect($fields, $t['fields']);
             abort_if(count($common) >= 2, 422, 'Taj teren je zauzet ili je sused već zauzetom terenu.');
         }
-
         // Broj vec izabranih sela ovog igraca PRE ovog izbora - u pravoj Catan igri
         // pocetni resursi se dobijaju samo za DRUGO selo, ne za prvo.
         $priorCount = collect($bs['playerTromedje'] ?? [])->where('id', $currentUserId)->count();
 
         $bs['playerTromedje'][] = ['id' => $currentUserId, 'fields' => array_values($fields), 'type' => 'settlement', 'tri_index' => $data['tri_index']];
-        $bs['pickTurnIndex'] = $pickIdx + 1;
 
-        if ($bs['pickTurnIndex'] >= $totalPicks) {
-            $bs['phase'] = 'playing';
-        }
+        // NE predajemo red odmah - igrac prvo MORA da izgradi (besplatan) put tacno
+        // pored ovog sela pre nego sto potez predje na sledeceg igraca.
+        $bs['pickSubPhase'] = 'road';
+        $bs['pendingRoadVertex'] = $data['tri_index'];
 
         $game->update(['board_state' => $bs]);
 
@@ -186,6 +187,51 @@ foreach (($bs['playerTromedje'] ?? []) as $t) {
                 $this->addResources($game, $currentUserId, $starting);
             }
         }
+
+        return response()->json($this->present($game->fresh()));
+    }
+
+    // POST /api/games/{game}/pick-road — besplatan put ODMAH pored sela koje je upravo izabrano
+    // (deo pocetne faze), tek posle ovoga red prelazi na sledeceg igraca.
+    public function pickRoad(Request $request, Game $game)
+    {
+        $this->authorizeAccess($game);
+
+        $data = $request->validate([
+            'edge_index' => ['required', 'integer', 'min:0', 'max:' . (count(self::EDGES) - 1)],
+        ]);
+
+        $bs = $game->board_state ?? [];
+        abort_unless(($bs['phase'] ?? null) === 'picking', 422, 'Partija nije u fazi biranja.');
+        abort_unless(($bs['pickSubPhase'] ?? null) === 'road', 422, 'Prvo moraš da izabereš selo.');
+
+        $turnOrder = $bs['turnOrder'] ?? [];
+        $pickIdx = $bs['pickTurnIndex'] ?? 0;
+        $currentUserId = $turnOrder[$pickIdx % count($turnOrder)];
+        abort_unless($currentUserId === $request->user()->id, 403, 'Nije tvoj red.');
+
+        $edge = self::EDGES[$data['edge_index']];
+        $pendingVertex = $bs['pendingRoadVertex'] ?? null;
+        abort_unless(in_array($pendingVertex, $edge, true), 422, 'Put mora biti tačno pored sela koje si upravo izabrao.');
+
+        $roads = $bs['roads'] ?? [];
+        abort_if(collect($roads)->contains(fn ($r) => $r['edge_index'] === $data['edge_index']), 422, 'Tu već postoji put.');
+
+        $roads[] = ['id' => $currentUserId, 'edge_index' => $data['edge_index']];
+        $bs['roads'] = $roads;
+
+        $totalPicks = count($turnOrder) * 2;
+        $bs['pickTurnIndex'] = $pickIdx + 1;
+        $bs['pickSubPhase'] = 'settlement';
+        $bs['pendingRoadVertex'] = null;
+
+        if ($bs['pickTurnIndex'] >= $totalPicks) {
+            $bs['phase'] = 'playing';
+            $bs['playTurnIndex'] = 0;
+            $bs['hasRolledThisTurn'] = false;
+        }
+
+        $game->update(['board_state' => $bs]);
 
         return response()->json($this->present($game->fresh()));
     }

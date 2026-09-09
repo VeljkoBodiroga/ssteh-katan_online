@@ -59,6 +59,8 @@
     createdBy: null,
     turnOrder: [],
     pickTurnIndex: 0,
+    pickSubPhase: "settlement",
+    pendingRoadVertex: null,
     playTurnIndex: 0,
     hasRolledThisTurn: false,
     roadBuildMode: false,
@@ -201,19 +203,45 @@
     });
   }
 
-  function renderRoadMarkers() {
+    function renderRoadMarkers() {
     const boardEl = document.getElementById("board");
 
-    // Postojeci (izgradjeni) putevi - stalno vidljivi svima.
     state.roads.forEach((r) => {
       drawRoadBar(edges[r.edge_index], colorForPlayer(r.id), false, null);
     });
 
-    // Slobodne (klikabilne) opcije - samo kad je "Sagradi put" rezim aktivan.
     if (state.roadBuildMode) {
       availableRoadEdges().forEach(({ idx, e }) => {
         drawRoadBar(e, "rgba(255,255,255,0.85)", true, () => buildRoadMultiplayer(idx));
       });
+    }
+
+    if (state.phase === "picking" && state.pickSubPhase === "road") {
+      const currentUserId = state.turnOrder[state.pickTurnIndex % state.turnOrder.length];
+      if (currentUserId === cfg.currentUserId) {
+        availablePickRoadEdges().forEach(({ idx, e }) => {
+          drawRoadBar(e, "rgba(255,255,255,0.85)", true, () => pickRoadMultiplayer(idx));
+        });
+      }
+    }
+  }
+
+  function availablePickRoadEdges() {
+    const builtSet = new Set(state.roads.map((r) => r.edge_index));
+    return edges
+      .map((e, idx) => ({ idx, e }))
+      .filter(({ idx, e }) => !builtSet.has(idx) && e.includes(state.pendingRoadVertex));
+  }
+
+  async function pickRoadMultiplayer(edgeIdx) {
+    try {
+      const game = await apiFetch(`/games/${state.gameId}/pick-road`, {
+        method: "POST",
+        body: JSON.stringify({ edge_index: edgeIdx }),
+      });
+      applyServerState(game);
+    } catch (e) {
+      alert("Greška: " + e.message);
     }
   }
 
@@ -374,12 +402,20 @@
   }
 
   // ---------- MULTIPLAYER: picking ----------
-  function renderPickingMultiplayer() {
+    function renderPickingMultiplayer() {
     const turnInfo = document.getElementById("turn-indicator");
     const listEl = document.getElementById("tromedje-list");
     const totalPicks = state.turnOrder.length * 2;
     const currentUserId = state.turnOrder[state.pickTurnIndex % state.turnOrder.length];
     const myTurn = currentUserId === cfg.currentUserId;
+
+    if (state.pickSubPhase === "road") {
+      turnInfo.textContent = myTurn
+        ? `🎯 Sad izgradi (besplatan) put tačno pored svog novog sela (${state.pickTurnIndex + 1}/${totalPicks})`
+        : `⏳ Na potezu: ${playerName(currentUserId)} gradi put (${state.pickTurnIndex + 1}/${totalPicks}) — čekaj svoj red...`;
+      listEl.innerHTML = "";
+      return;
+    }
 
     turnInfo.textContent = myTurn
       ? `🎯 Na tebi je red da izabereš teren (${state.pickTurnIndex + 1}/${totalPicks})`
@@ -564,6 +600,8 @@
     state.numbers = bs.numbers;
     state.turnOrder = bs.turnOrder || [];
     state.pickTurnIndex = bs.pickTurnIndex || 0;
+    state.pickSubPhase = bs.pickSubPhase || "settlement";
+    state.pendingRoadVertex = bs.pendingRoadVertex ?? null;
     state.playTurnIndex = bs.playTurnIndex || 0;
     state.hasRolledThisTurn = bs.hasRolledThisTurn || false;
     state.playerTromedje = bs.playerTromedje || [];
