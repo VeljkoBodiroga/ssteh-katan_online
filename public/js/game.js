@@ -511,11 +511,14 @@ const PLAYER_COLORS = ["#3498db", "#e74c3c", "#2ecc71", "#f39c12"];
     document.getElementById("btn-next-turn").style.display = "inline-block";
   }
 
-  // ---------- Zajednicko ----------
-  function renderPlayers() {
+  
+    function renderPlayers() {
     const el = document.getElementById("player-info");
     el.innerHTML = "";
-    state.players.forEach((p) => {
+    const visiblePlayers = MULTIPLAYER
+      ? state.players.filter((p) => p.id === cfg.currentUserId)
+      : state.players;
+    visiblePlayers.forEach((p) => {
       const box = document.createElement("div");
       box.className = "player-box";
       box.innerHTML = `<h3 style="margin:0">${p.name}</h3>
@@ -523,7 +526,7 @@ const PLAYER_COLORS = ["#3498db", "#e74c3c", "#2ecc71", "#f39c12"];
       el.appendChild(box);
     });
   }
-
+// ---------- Zajednicko ----------
   function renderLog() {
     const el = document.getElementById("roll-log-list");
     el.innerHTML = "";
