@@ -1,10 +1,10 @@
 // Port of src/Stranice/Igraj.tsx (React) na vanilla JS + Laravel API pozive.
 // DVA REZIMA:
 //  - MULTIPLAYER (cfg.gameId je postavljen, dosli smo iz lobija): server je izvor istine,
-//    svaki browser POLL-uje /api/games/{id} na ~2.5s i renderuje ono sto server kaze. Samo
-//    igrac na potezu (po pravoj ulogovanoj sesiji) moze da bira teren / baci kocku.
+//    svaki browser POLL-uje /api/games/{id} na ~1s i renderuje ono sto server kaze. Samo
+//    igrac na potezu (po pravoj ulogovanoj sesiji) moze da bira teren / baci kocku / gradi.
 //  - HOTSEAT (direktan pristup /igraj bez lobija): sve se odigrava lokalno u jednom browseru,
-//    korisno za brzo testiranje bez potrebe za dva naloga.
+//    korisno za brzo testiranje bez potrebe za dva naloga (bez sistema puteva).
 (function () {
   const cfg = window.CATAN_CONFIG;
   const MULTIPLAYER = !!cfg.gameId;
@@ -27,8 +27,7 @@
   const center = 9;
   const cornerIndices = [0, 2, 11, 18, 16, 7];
 
-  // Master lista svih 24 tromedje (mesta za naselje) - MORA biti identicna serverskoj listi
-  // u GameApiController.php jer server proverava indekse koje posaljemo.
+  // Master lista svih 24 tromedje (mesta za naselje) - MORA biti identicna serverskoj listi.
   const tromedje = [
     [0, 1, 4], [1, 2, 5], [2, 5, 6],
     [0, 3, 4], [1, 4, 5],
@@ -42,8 +41,16 @@
     [14, 17, 18], [14, 15, 18],
   ];
 
+  // Master lista svih 30 moguca "puta" (ivica izmedju dva susedna temena) - MORA biti
+  // identicna serverskoj listi u GameApiController.php.
+  const edges = [
+    [0, 3], [0, 4], [1, 2], [1, 4], [2, 9], [3, 5], [4, 7], [5, 6], [5, 8], [6, 12],
+    [7, 8], [7, 10], [8, 14], [9, 10], [9, 11], [10, 16], [11, 18], [12, 13], [13, 14], [13, 19],
+    [14, 15], [15, 16], [15, 21], [16, 17], [17, 18], [17, 23], [19, 20], [20, 21], [21, 22], [22, 23],
+  ];
+
   let state = {
-    phase: MULTIPLAYER ? "waiting-setup" : "tiles", // hotseat: tiles->numbers->picking->ready->playing
+    phase: MULTIPLAYER ? "waiting-setup" : "tiles",
     tiles: Array(19).fill(null),
     counts: Object.fromEntries(Object.keys(resourceLimits).map((r) => [r, 0])),
     numbers: Array(19).fill(null),
@@ -53,6 +60,9 @@
     turnOrder: [],
     pickTurnIndex: 0,
     playTurnIndex: 0,
+    hasRolledThisTurn: false,
+    roadBuildMode: false,
+    roads: [],
     players:
       cfg.players && cfg.players.length > 0
         ? cfg.players.map((p) => ({ id: p.id, name: p.name, resources: { drvo: 0, ovca: 0, psenica: 0, cigla: 0, kamen: 0 } }))
@@ -93,7 +103,13 @@
     return p ? p.name : `Igrač ${id}`;
   }
 
-  // ---------- Zajednicki prikaz table (koristi ga i hotseat i multiplayer) ----------
+  const PLAYER_COLORS = ["#3498db", "#e74c3c", "#2ecc71", "#f39c12"];
+  function colorForPlayer(playerId) {
+    const idx = state.players.findIndex((p) => p.id === playerId);
+    return PLAYER_COLORS[idx >= 0 ? idx % PLAYER_COLORS.length : 0];
+  }
+
+  // ---------- Zajednicki prikaz table ----------
   function renderBoard() {
     const boardEl = document.getElementById("board");
     boardEl.innerHTML = "";
@@ -107,6 +123,7 @@
         const hex = document.createElement("div");
         hex.className = "hex";
         hex.dataset.idx = idx;
+
         if (state.tiles[idx]) {
           const img = document.createElement("img");
           img.src = resourceImages[state.tiles[idx]];
@@ -134,36 +151,39 @@
       }
       boardEl.appendChild(row);
     });
+
     renderSettlementMarkers();
+    renderRoadMarkers();
   }
 
-const PLAYER_COLORS = ["#3498db", "#e74c3c", "#2ecc71", "#f39c12"];
-
-  function colorForPlayer(playerId) {
-    const idx = state.players.findIndex((p) => p.id === playerId);
-    return PLAYER_COLORS[idx >= 0 ? idx % PLAYER_COLORS.length : 0];
+  // Tacna pozicija temena (vertex) = prosek centara tri polja koja dodiruje,
+  // izracunato iz STVARNIH pozicija na ekranu (getBoundingClientRect), relativno na #board.
+  function getVertexPixelPosition(triIdx) {
+    const boardEl = document.getElementById("board");
+    const boardRect = boardEl.getBoundingClientRect();
+    const fields = tromedje[triIdx];
+    const rects = fields
+      .map((idx) => boardEl.querySelector(`[data-idx="${idx}"]`))
+      .filter(Boolean)
+      .map((el) => el.getBoundingClientRect());
+    if (rects.length === 0) return null;
+    const x = rects.reduce((sum, r) => sum + (r.left + r.width / 2), 0) / rects.length - boardRect.left;
+    const y = rects.reduce((sum, r) => sum + (r.top + r.height / 2), 0) / rects.length - boardRect.top;
+    return { x, y };
   }
 
   function renderSettlementMarkers() {
     const boardEl = document.getElementById("board");
-    const boardRect = boardEl.getBoundingClientRect();
-
     state.playerTromedje.forEach((t) => {
-      const rects = t.fields
-        .map((idx) => boardEl.querySelector(`[data-idx="${idx}"]`))
-        .filter(Boolean)
-        .map((el) => el.getBoundingClientRect());
-
-      if (rects.length === 0) return;
-
-      // Teme je (priblizno) centroid centara tri polja koja dodiruje.
-      const centerX = rects.reduce((sum, r) => sum + (r.left + r.width / 2), 0) / rects.length - boardRect.left;
-      const centerY = rects.reduce((sum, r) => sum + (r.top + r.height / 2), 0) / rects.length - boardRect.top;
+      // Nadji reprezentativno teme (prvi tromedje indeks ciji su fields === t.fields).
+      const triIdx = tromedje.findIndex((f) => f.length === t.fields.length && f.every((v, i) => v === t.fields[i]));
+      const pos = triIdx >= 0 ? getVertexPixelPosition(triIdx) : null;
+      if (!pos) return;
 
       const marker = document.createElement("div");
       marker.className = "settlement-marker";
-      marker.style.left = `${centerX}px`;
-      marker.style.top = `${centerY}px`;
+      marker.style.left = `${pos.x}px`;
+      marker.style.top = `${pos.y}px`;
       marker.style.background = colorForPlayer(t.id);
       marker.title = playerName(t.id);
       marker.textContent = "🏠";
@@ -171,15 +191,53 @@ const PLAYER_COLORS = ["#3498db", "#e74c3c", "#2ecc71", "#f39c12"];
     });
   }
 
+  function renderRoadMarkers() {
+    const boardEl = document.getElementById("board");
 
+    // Postojeci (izgradjeni) putevi - stalno vidljivi svima.
+    state.roads.forEach((r) => {
+      drawRoadBar(edges[r.edge_index], colorForPlayer(r.id), false, null);
+    });
+
+    // Slobodne (klikabilne) opcije - samo kad je "Sagradi put" rezim aktivan.
+    if (state.roadBuildMode) {
+      availableRoadEdges().forEach(({ idx, e }) => {
+        drawRoadBar(e, "rgba(255,255,255,0.85)", true, () => buildRoadMultiplayer(idx));
+      });
+    }
+  }
+
+  function drawRoadBar(edgeVertices, color, clickable, onClick) {
+    const boardEl = document.getElementById("board");
+    const [triA, triB] = edgeVertices;
+    const posA = getVertexPixelPosition(triA);
+    const posB = getVertexPixelPosition(triB);
+    if (!posA || !posB) return;
+
+    const midX = (posA.x + posB.x) / 2;
+    const midY = (posA.y + posB.y) / 2;
+    const dx = posB.x - posA.x;
+    const dy = posB.y - posA.y;
+    const length = Math.sqrt(dx * dx + dy * dy);
+    const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
+
+    const bar = document.createElement("div");
+    bar.className = clickable ? "road-marker road-slot" : "road-marker";
+    bar.style.left = `${midX}px`;
+    bar.style.top = `${midY}px`;
+    bar.style.width = `${length}px`;
+    bar.style.background = color;
+    bar.style.transform = `translate(-50%, -50%) rotate(${angle}deg)`;
+    if (clickable) bar.onclick = onClick;
+    boardEl.appendChild(bar);
+  }
 
   function handleSelect(idx, res) {
     if (MULTIPLAYER && !state.isCreator) return;
     if (state.tiles[idx]) return;
     if (state.counts[res] >= resourceLimits[res]) {
       alert(`Nema više ${res}`);
-      return;
-    }
+      return;    }
     state.tiles[idx] = res;
     state.counts[res] += 1;
     renderBoard();
@@ -211,14 +269,12 @@ const PLAYER_COLORS = ["#3498db", "#e74c3c", "#2ecc71", "#f39c12"];
     renderBoard();
 
     if (MULTIPLAYER) {
-      // Kreator je gotov sa postavljanjem table - prikazi dugme za slanje na server.
       document.getElementById("btn-submit-board").style.display = "inline-block";
     } else {
       enterPickingPhaseHotseat();
     }
   }
 
-  // ---------- MULTIPLAYER: kreator salje gotovu tablu na server ----------
   async function submitBoard() {
     try {
       await apiFetch(`/games/${state.gameId}/setup-board`, {
@@ -231,7 +287,6 @@ const PLAYER_COLORS = ["#3498db", "#e74c3c", "#2ecc71", "#f39c12"];
     }
   }
 
-  // ---------- Zajednicka logika biranja terena (opis + pravilo suseda) ----------
   function shareEdge(fieldsA, fieldsB) {
     const common = fieldsA.filter((f) => fieldsB.includes(f));
     return common.length >= 2;
@@ -241,6 +296,33 @@ const PLAYER_COLORS = ["#3498db", "#e74c3c", "#2ecc71", "#f39c12"];
     return tromedje
       .map((fields, idx) => ({ idx, fields }))
       .filter(({ fields }) => !state.playerTromedje.some((t) => shareEdge(fields, t.fields)));
+  }
+
+  // Isti algoritam kao na serveru: koje ivice smem da gradim (nadovezuju se na moje
+  // selo ili moj postojeci put, a ne prolaze kroz tudje selo).
+  function availableRoadEdges() {
+    const myId = cfg.currentUserId;
+    const mySettlementVerts = new Set(state.playerTromedje.filter((t) => t.id === myId).flatMap((t) => t.fields));
+    const enemyVerts = new Set(state.playerTromedje.filter((t) => t.id !== myId).flatMap((t) => t.fields));
+    const builtSet = new Set(state.roads.map((r) => r.edge_index));
+
+    // Vertex indeksi (tromedje indeksi) na krajevima mojih vec izgradjenih puteva.
+    const myRoadVertIndices = new Set(
+      state.roads.filter((r) => r.id === myId).flatMap((r) => edges[r.edge_index])
+    );
+
+    return edges
+      .map((e, idx) => ({ idx, e }))
+      .filter(({ idx, e }) => {
+        if (builtSet.has(idx)) return false;
+        return e.some((triIdx) => {
+          const fields = tromedje[triIdx];
+          const isMySettlement = fields.some((f) => mySettlementVerts.has(f));
+          const isEnemySettlement = fields.some((f) => enemyVerts.has(f));
+          const isMyRoadEnd = myRoadVertIndices.has(triIdx) && !isEnemySettlement;
+          return isMySettlement || isMyRoadEnd;
+        });
+      });
   }
 
   function describeTromedja(fields) {
@@ -254,7 +336,7 @@ const PLAYER_COLORS = ["#3498db", "#e74c3c", "#2ecc71", "#f39c12"];
       .join(" · ");
   }
 
-  // ---------- MULTIPLAYER: render picking na osnovu servera ----------
+  // ---------- MULTIPLAYER: picking ----------
   function renderPickingMultiplayer() {
     const turnInfo = document.getElementById("turn-indicator");
     const listEl = document.getElementById("tromedje-list");
@@ -290,17 +372,27 @@ const PLAYER_COLORS = ["#3498db", "#e74c3c", "#2ecc71", "#f39c12"];
     }
   }
 
-  // ---------- MULTIPLAYER: render igranja (bacanje kocke na potezu) ----------
+  // ---------- MULTIPLAYER: igranje (kocka -> (gradnja) -> Dalje) ----------
   function renderPlayingMultiplayer() {
     const currentUserId = state.turnOrder[state.playTurnIndex % state.turnOrder.length];
     const myTurn = currentUserId === cfg.currentUserId;
 
-    document.getElementById("turn-indicator-playing").textContent = myTurn
-      ? "🎯 Ti si na potezu — baci kockicu!"
-      : `⏳ Na potezu: ${playerName(currentUserId)} — čeka se...`;
+    const turnEl = document.getElementById("turn-indicator-playing");
+    if (!myTurn) {
+      turnEl.textContent = `⏳ Na potezu: ${playerName(currentUserId)} — čeka se...`;
+    } else if (!state.hasRolledThisTurn) {
+      turnEl.textContent = "🎯 Ti si na potezu — baci kockicu!";
+    } else {
+      turnEl.textContent = "🎯 Tvoj potez — možeš da gradiš puteve, pa klikni „Dalje“ kad završiš.";
+    }
 
-    document.getElementById("dice-icon").style.display = myTurn ? "block" : "none";
-    document.getElementById("btn-next-turn").style.display = "none"; // red se automatski predaje na serveru
+    document.getElementById("dice-icon").style.display = myTurn && !state.hasRolledThisTurn ? "block" : "none";
+    document.getElementById("btn-next-turn").style.display = myTurn && state.hasRolledThisTurn ? "inline-block" : "none";
+    document.getElementById("btn-build-road").style.display = myTurn && state.hasRolledThisTurn ? "inline-block" : "none";
+
+    if (!myTurn || !state.hasRolledThisTurn) {
+      state.roadBuildMode = false;
+    }
   }
 
   async function rollGameDiceMultiplayer() {
@@ -311,7 +403,36 @@ const PLAYER_COLORS = ["#3498db", "#e74c3c", "#2ecc71", "#f39c12"];
     try {
       const game = await apiFetch(`/games/${state.gameId}/roll`, { method: "POST" });
       applyServerState(game);
-    } catch (e) {      alert("Greška: " + e.message);
+    } catch (e) {
+      alert("Greška: " + e.message);
+    }
+  }
+
+  function toggleRoadBuildMode() {
+    state.roadBuildMode = !state.roadBuildMode;
+    renderBoard();
+  }
+
+  async function buildRoadMultiplayer(edgeIdx) {
+    try {
+      const game = await apiFetch(`/games/${state.gameId}/build-road`, {
+        method: "POST",
+        body: JSON.stringify({ edge_index: edgeIdx }),
+      });
+      state.roadBuildMode = false;
+      applyServerState(game);
+    } catch (e) {
+      alert("Greška: " + e.message);
+    }
+  }
+
+  async function endTurnMultiplayer() {
+    try {
+      const game = await apiFetch(`/games/${state.gameId}/end-turn`, { method: "POST" });
+      state.roadBuildMode = false;
+      applyServerState(game);
+    } catch (e) {
+      alert("Greška: " + e.message);
     }
   }
 
@@ -329,7 +450,6 @@ const PLAYER_COLORS = ["#3498db", "#e74c3c", "#2ecc71", "#f39c12"];
     const bs = game.board_state;
 
     if (!bs) {
-      // Tabla jos nije postavljena.
       state.phase = "waiting-setup";
       document.getElementById("setup-controls").style.display = state.isCreator ? "block" : "none";
       document.getElementById("waiting-host-msg").style.display = state.isCreator ? "none" : "block";
@@ -344,7 +464,9 @@ const PLAYER_COLORS = ["#3498db", "#e74c3c", "#2ecc71", "#f39c12"];
     state.turnOrder = bs.turnOrder || [];
     state.pickTurnIndex = bs.pickTurnIndex || 0;
     state.playTurnIndex = bs.playTurnIndex || 0;
+    state.hasRolledThisTurn = bs.hasRolledThisTurn || false;
     state.playerTromedje = bs.playerTromedje || [];
+    state.roads = bs.roads || [];
     state.log = bs.log || [];
     state.phase = bs.phase;
 
@@ -354,8 +476,7 @@ const PLAYER_COLORS = ["#3498db", "#e74c3c", "#2ecc71", "#f39c12"];
     if (bs.phase === "picking") {
       document.getElementById("picking-controls").style.display = "block";
       document.getElementById("game-controls").style.display = "none";
-      document.getElementById("btn-start-game").style.display = "none";
-      renderPickingMultiplayer();
+      document.getElementById("btn-start-game").style.display = "none";      renderPickingMultiplayer();
     } else if (bs.phase === "playing") {
       document.getElementById("picking-controls").style.display = "none";
       document.getElementById("game-controls").style.display = "block";
@@ -378,7 +499,7 @@ const PLAYER_COLORS = ["#3498db", "#e74c3c", "#2ecc71", "#f39c12"];
     setTimeout(pollLoop, 1000);
   }
 
-  // ---------- HOTSEAT (bez lobija - lokalna simulacija u jednom browseru) ----------
+  // ---------- HOTSEAT (bez lobija - lokalna simulacija, bez sistema puteva) ----------
   function buildPickOrder() {
     const ids = state.players.map((p) => p.id);
     return [...ids, ...[...ids].reverse()];
@@ -432,7 +553,7 @@ const PLAYER_COLORS = ["#3498db", "#e74c3c", "#2ecc71", "#f39c12"];
     state.playerTromedje.push({ id: currentPlayerId, fields });
 
     const brojevi = fields.map((idx) => state.numbers[idx]).filter((n) => n !== null);
-    state.log = [`${playerName(currentPlayerId)} je izabrao selo: brojevi ${brojevi.join(", ")}`, ...state.log].slice(0, 4);
+    state.log = [`${playerName(currentPlayerId)} je izabrao teren: brojevi ${brojevi.join(", ")}`, ...state.log].slice(0, 4);
 
     state.currentPickIndex += 1;
     renderPickingHotseat();
@@ -511,13 +632,11 @@ const PLAYER_COLORS = ["#3498db", "#e74c3c", "#2ecc71", "#f39c12"];
     document.getElementById("btn-next-turn").style.display = "inline-block";
   }
 
-  
-    function renderPlayers() {
+  // ---------- Zajednicko ----------
+  function renderPlayers() {
     const el = document.getElementById("player-info");
     el.innerHTML = "";
-    const visiblePlayers = MULTIPLAYER
-      ? state.players.filter((p) => p.id === cfg.currentUserId)
-      : state.players;
+    const visiblePlayers = MULTIPLAYER ? state.players.filter((p) => p.id === cfg.currentUserId) : state.players;
     visiblePlayers.forEach((p) => {
       const box = document.createElement("div");
       box.className = "player-box";
@@ -526,7 +645,7 @@ const PLAYER_COLORS = ["#3498db", "#e74c3c", "#2ecc71", "#f39c12"];
       el.appendChild(box);
     });
   }
-// ---------- Zajednicko ----------
+
   function renderLog() {
     const el = document.getElementById("roll-log-list");
     el.innerHTML = "";
@@ -562,15 +681,17 @@ const PLAYER_COLORS = ["#3498db", "#e74c3c", "#2ecc71", "#f39c12"];
   });
   document.getElementById("btn-save").addEventListener("click", saveGame);
   document.getElementById("btn-reset").addEventListener("click", resetGame);
+  document.getElementById("btn-next-turn").addEventListener("click", MULTIPLAYER ? endTurnMultiplayer : nextTurnHotseat);
 
   if (MULTIPLAYER) {
     document.getElementById("btn-submit-board").addEventListener("click", submitBoard);
+    document.getElementById("btn-build-road").addEventListener("click", toggleRoadBuildMode);
     document.getElementById("btn-load").style.display = "none";
     document.getElementById("btn-save").style.display = "none";
     pollLoop();
   } else {
     document.getElementById("btn-start-game").addEventListener("click", finalizeGameHotseat);
-    document.getElementById("btn-next-turn").addEventListener("click", nextTurnHotseat);
+    document.getElementById("btn-build-road").style.display = "none";
     document.getElementById("btn-load").addEventListener("click", async () => {
       if (!state.gameId) return alert("Nema aktivne partije za učitavanje.");
       try {
