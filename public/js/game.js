@@ -172,25 +172,31 @@
     return { x, y };
   }
 
-    function renderSettlementMarkers() {
+     function renderSettlementMarkers() {
     const boardEl = document.getElementById("board");
     state.playerTromedje.forEach((t) => {
-      // Nadji reprezentativno teme (prvi tromedje indeks ciji su fields === t.fields).
       const triIdx = tromedje.findIndex((f) => f.length === t.fields.length && f.every((v, i) => v === t.fields[i]));
       const pos = triIdx >= 0 ? getVertexPixelPosition(triIdx) : null;
       if (!pos) return;
 
+      const isCity = t.type === "city";
+      const upgradeable = state.cityBuildMode && t.id === cfg.currentUserId && !isCity;
+
       const marker = document.createElement("div");
-      marker.className = "settlement-marker";
+      marker.className = "settlement-marker" + (upgradeable ? " settlement-upgradeable" : "");
       marker.style.left = `${pos.x}px`;
       marker.style.top = `${pos.y}px`;
       marker.style.background = colorForPlayer(t.id);
-      marker.title = playerName(t.id);
-      marker.textContent = "🏠";
+      marker.title = playerName(t.id) + (isCity ? " (grad)" : "");
+      marker.textContent = isCity ? "🏛️" : "🏠";
+      if (upgradeable) {
+        marker.style.pointerEvents = "auto";
+        marker.style.cursor = "pointer";
+        marker.onclick = () => buildCityMultiplayer(triIdx);
+      }
       boardEl.appendChild(marker);
     });
   }
-
   function renderRoadMarkers() {
     const boardEl = document.getElementById("board");
 
