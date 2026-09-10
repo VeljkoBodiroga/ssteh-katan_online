@@ -474,7 +474,7 @@
     } else if (!state.hasRolledThisTurn) {
       turnEl.textContent = "🎯 Ti si na potezu — baci kockicu!";
     } else {
-      turnEl.textContent = "🎯 Tvoj potez — možeš da gradiš puteve, pa klikni „Dalje“ kad završiš.";
+      turnEl.textContent = "🎯 Ti si na potezu";
     }
 
     document.getElementById("dice-icon").style.display = myTurn && !state.hasRolledThisTurn ? "block" : "none";
@@ -886,10 +886,7 @@
     }
   }
 
-  function resetGame() {
-    if (!window.confirm("Reset partiju?")) return;
-    window.location.reload();
-  }
+
 
   document.getElementById("btn-roll-setup").addEventListener("click", rollDiceAndAssign);
   document.getElementById("dice-icon").addEventListener("click", MULTIPLAYER ? rollGameDiceMultiplayer : rollGameDiceHotseat);
@@ -897,7 +894,6 @@
     window.location.href = "/";
   });
   document.getElementById("btn-save").addEventListener("click", saveGame);
-  document.getElementById("btn-reset").addEventListener("click", resetGame);
   document.getElementById("btn-next-turn").addEventListener("click", MULTIPLAYER ? endTurnMultiplayer : nextTurnHotseat);
 
   if (MULTIPLAYER) {

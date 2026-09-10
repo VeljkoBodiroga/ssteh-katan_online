@@ -8,7 +8,7 @@
 
 @section('content')
 @if ($game)
-    <p style="text-align:center; color:#ccc; margin:10px 0;">
+    <p style="text-align:center; color:#23232e; margin:10px 0;">
         Partija #{{ $game->id }} — igrači: {{ $players->pluck('name')->join(', ') }}
     </p>
 @endif
@@ -19,7 +19,7 @@
 </div>
 <div class="board-wrapper">
     <div class="left-column">
-        <p id="waiting-host-msg" style="display:none; color:#ccc;">
+        <p id="waiting-host-msg" style="display:none; color:#23232e;">
             ⏳ Čeka se da kreator lobija postavi tablu (izabere polja i baci kockicu za brojeve)...
         </p>
 
@@ -42,8 +42,8 @@
                     <span style="font-size: 32px; cursor: pointer;">🎲</span>
                 </div>
             </div>
-
-                        <div class="build-actions">
+                <div class="player-info" id="player-info"></div>
+                <div class="build-actions">
                 <button class="start-btn" id="btn-build-road" style="display:none;">Sagradi put</button>
                 <button class="start-btn" id="btn-build-settlement" style="display:none;">Sagradi selo</button>
                 <button class="start-btn" id="btn-build-city" style="display:none;">Izgradi grad</button>
@@ -89,7 +89,7 @@
                 <button class="start-btn" id="btn-confirm-discard">Potvrdi odbacivanje</button>
             </div>
 
-            <div class="player-info" id="player-info"></div>
+            
 
             <div class="roll-log">
                 <h3>Poslednja bacanja:</h3>
@@ -103,7 +103,6 @@
     <div class="controls-top">
         <button id="btn-save" class="small-btn">Sačuvaj</button>
         <button id="btn-load" class="small-btn">Učitaj</button>
-        <button id="btn-reset" class="small-btn">Reset</button>
     </div>
 </div>
 @endsection

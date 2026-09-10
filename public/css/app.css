@@ -1164,3 +1164,26 @@ main {
   background-color: #2b2b38;
   color: #fff;
 }
+
+
+/* Ispravka: dugmad na pocetnoj su <a> linkovi, uklanjamo podvlacenje i centriramo tekst */
+.play-btn,
+.option-btn {
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+
+.play-btn:hover,
+.option-btn:hover {
+  text-decoration: none;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  transform: translateY(-2px);
+}
+
+.option-btn {
+  padding: 0;
+}
