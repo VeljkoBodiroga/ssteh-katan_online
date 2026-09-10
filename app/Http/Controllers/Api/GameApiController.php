@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use App\Models\PlayerStat;
 
 class GameApiController extends Controller
 {
@@ -454,13 +455,19 @@ foreach (($bs['playerTromedje'] ?? []) as $t) {
 
         $playerTromedje[] = ['id' => $currentUserId, 'fields' => array_values($fields), 'type' => 'settlement', 'tri_index' => $data['tri_index']];
         $bs['playerTromedje'] = $playerTromedje;
-        $game->update(['board_state' => $bs]);
+
+        $result = $this->maybeFinishGame($game, $bs);
+        $bs = $result['bs'];
+        $update = ['board_state' => $bs];
+        if ($result['finished']) {
+            $update['status'] = 'finished';
+        }
+        $game->update($update);
 
         $this->addResources($game, $currentUserId, ['drvo' => -1, 'cigla' => -1, 'ovca' => -1, 'psenica' => -1]);
 
         return response()->json($this->present($game->fresh()));
     }
-
 
     // POST /api/games/{game}/build-city — unapredjenje sela u grad (2 psenica + 3 kamen)
     public function buildCity(Request $request, Game $game)
@@ -499,7 +506,14 @@ foreach (($bs['playerTromedje'] ?? []) as $t) {
 
         $playerTromedje[$foundIndex]['type'] = 'city';
         $bs['playerTromedje'] = $playerTromedje;
-        $game->update(['board_state' => $bs]);
+
+        $result = $this->maybeFinishGame($game, $bs);
+        $bs = $result['bs'];
+        $update = ['board_state' => $bs];
+        if ($result['finished']) {
+            $update['status'] = 'finished';
+        }
+        $game->update($update);
 
         $this->addResources($game, $currentUserId, ['psenica' => -2, 'kamen' => -3]);
 
@@ -574,6 +588,46 @@ foreach (($bs['playerTromedje'] ?? []) as $t) {
         if (! $user || (! $user->isAdmin() && ! $game->players->contains($user->id) && $game->created_by !== $user->id)) {
             abort(403, 'Nemate pristup ovoj partiji.');
         }
+    }
+
+    // Proverava da li je neko dosao do 5 poena; ako jeste, zavrsava partiju i
+    // azurira player_stats (odigrane/pobedjene/ukupno_poena) za sve igrace u partiji.
+    private function maybeFinishGame(Game $game, array $bs): array
+    {
+        if ($game->status === 'finished') {
+            return ['bs' => $bs, 'finished' => false];
+        }
+
+        $pointsByPlayer = [];
+        foreach (($bs['playerTromedje'] ?? []) as $t) {
+            $pointsByPlayer[$t['id']] = ($pointsByPlayer[$t['id']] ?? 0) + (($t['type'] ?? 'settlement') === 'city' ? 2 : 1);
+        }
+
+        $winnerId = null;
+        foreach ($pointsByPlayer as $uid => $pts) {
+            if ($pts >= 5) {
+                $winnerId = $uid;
+                break;
+            }
+        }
+
+        if (! $winnerId) {
+            return ['bs' => $bs, 'finished' => false];
+        }
+
+        $bs['winnerId'] = $winnerId;
+
+        foreach ($game->players as $user) {
+            $pts = $pointsByPlayer[$user->id] ?? 0;
+            $stat = PlayerStat::firstOrCreate(['user_id' => $user->id]);
+            $stat->increment('odigrane');
+            $stat->increment('ukupno_poena', $pts);
+            if ($user->id === $winnerId) {
+                $stat->increment('pobedjene');
+            }
+        }
+
+        return ['bs' => $bs, 'finished' => true];
     }
 
     // Dodaje (ili oduzima, ako je qty negativan) resurse igracu u game_players pivot tabeli.

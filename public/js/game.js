@@ -627,7 +627,7 @@
   }
 
   // ---------- MULTIPLAYER: primeni stanje dobijeno sa servera ----------
-  function applyServerState(game) {
+    function applyServerState(game) {
     state.createdBy = game.created_by;
     state.isCreator = game.created_by === cfg.currentUserId;
 
@@ -636,6 +636,11 @@
       name: p.username,
       resources: Object.assign({ drvo: 0, ovca: 0, psenica: 0, cigla: 0, kamen: 0 }, p.resources || {}),
     }));
+
+    if (game.status === "finished") {
+      showGameOver(game);
+      return;
+    }
 
     const bs = game.board_state;
 
@@ -680,6 +685,20 @@
 
     renderBoard();
   }
+
+  function showGameOver(game) {
+    document.getElementById("setup-controls").style.display = "none";
+    document.getElementById("waiting-host-msg").style.display = "none";
+    document.getElementById("picking-controls").style.display = "none";
+    document.getElementById("game-controls").style.display = "none";
+
+    const winnerId = game.board_state ? game.board_state.winnerId : null;
+    const winnerName = winnerId ? playerName(winnerId) : "?";
+    document.getElementById("game-over-text").textContent = `🏆 Pobednik: ${winnerName}!`;
+    document.getElementById("game-over-overlay").style.display = "flex";
+  }
+
+
 
   async function pollLoop() {
     if (!MULTIPLAYER) return;

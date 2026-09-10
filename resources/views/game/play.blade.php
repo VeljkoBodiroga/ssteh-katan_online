@@ -12,6 +12,11 @@
         Partija #{{ $game->id }} — igrači: {{ $players->pluck('name')->join(', ') }}
     </p>
 @endif
+<div id="game-over-overlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:1000; align-items:center; justify-content:center; flex-direction:column; gap:20px;">
+    <h1 style="color:white;">🏁 Kraj igre!</h1>
+    <p id="game-over-text" style="color:white; font-size:22px;"></p>
+    <a href="{{ route('home') }}" class="start-btn">Vrati se na početnu</a>
+</div>
 <div class="board-wrapper">
     <div class="left-column">
         <p id="waiting-host-msg" style="display:none; color:#ccc;">
