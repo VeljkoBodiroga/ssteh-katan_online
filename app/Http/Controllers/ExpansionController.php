@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use App\Models\Expansion;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
-use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ExpansionController extends Controller
 {
@@ -85,24 +84,5 @@ class ExpansionController extends Controller
         return redirect()->route('expansions.index')->with('status', 'Ekspanzija obrisana.');
     }
 
-    /**
-     * Export u CSV (dodatna funkcionalnost: eksport podataka)
-     */
-    public function exportCsv(): StreamedResponse
-    {
-        $expansions = Expansion::all();
-
-        $callback = function () use ($expansions) {
-            $handle = fopen('php://output', 'w');
-            fputcsv($handle, ['ID', 'Naziv', 'Opis']);
-            foreach ($expansions as $exp) {
-                fputcsv($handle, [$exp->id, $exp->title, $exp->description]);
-            }
-            fclose($handle);
-        };
-
-        return response()->streamDownload($callback, 'ekspanzije.csv', [
-            'Content-Type' => 'text/csv',
-        ]);
-    }
+    
 }

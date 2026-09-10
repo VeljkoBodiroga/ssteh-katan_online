@@ -15,7 +15,6 @@ Route::get('/', [HomeController::class, 'index'])->name('home');
 Route::get('/pravila', [HomeController::class, 'rules'])->name('rules');
 
 Route::get('/ekspanzije', [ExpansionController::class, 'index'])->name('expansions.index');
-Route::get('/ekspanzije/export', [ExpansionController::class, 'exportCsv'])->name('expansions.export');
 
 // ---- Gost (samo neulogovan) ----
 Route::middleware('guest')->group(function () {

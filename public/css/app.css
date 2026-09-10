@@ -983,3 +983,48 @@ body, html {
   color: #ffd700;
   font-weight: bold;
 }
+
+.simple-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  max-width: 500px;
+  margin: 20px auto 0;
+  color: #fff;
+}
+
+.simple-pagination .page-btn {
+  padding: 8px 14px;
+  border-radius: 6px;
+  background: #8b1e1e;
+  color: #fff;
+  text-decoration: none;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.simple-pagination .page-btn.disabled {
+  background: #444;
+  color: #999;
+  cursor: default;
+}
+
+.simple-pagination .page-numbers {
+  display: flex;
+  gap: 6px;
+}
+
+.simple-pagination .page-number {
+  padding: 6px 12px;
+  border-radius: 6px;
+  color: #fff;
+  text-decoration: none;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.simple-pagination .page-number.active {
+  background: #ffd54f;
+  color: #222;
+  font-weight: 700;
+  border-color: transparent;
+}

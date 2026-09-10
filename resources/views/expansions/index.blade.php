@@ -5,14 +5,13 @@
 @section('content')
 <div class="ekspanzije-container">
 
-    <form method="GET" action="{{ route('expansions.index') }}" class="filters">
-        <input type="text" name="search" value="{{ $search }}" placeholder="Pretraži po nazivu...">
+        <form method="GET" action="{{ route('expansions.index') }}" class="filters">
+        <input type="text" name="search" value="{{ $search }}" placeholder="Pretraži po nazivu..."
+               onkeydown="if(event.key==='Enter'){this.form.submit();}">
         <select name="sort" onchange="this.form.submit()">
             <option value="title" @selected($sort === 'title')>Sortiraj po nazivu</option>
             <option value="length" @selected($sort === 'length')>Sortiraj po dužini opisa</option>
         </select>
-        <button type="submit">Pretraži</button>
-        <a href="{{ route('expansions.export') }}" style="margin-left:10px;">⬇ Export CSV</a>
         @auth
             @if (auth()->user()->isAdmin())
                 <a href="{{ route('expansions.create') }}" style="margin-left:10px;">+ Nova ekspanzija</a>
@@ -42,8 +41,8 @@
         @endforeach
     </div>
 
-    <div class="pagination">
-        {{ $expansions->onEachSide(1)->links() }}
+        <div class="pagination">
+        {{ $expansions->onEachSide(1)->links('partials.pagination') }}
     </div>
 </div>
 @endsection
