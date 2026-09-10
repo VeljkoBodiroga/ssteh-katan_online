@@ -43,6 +43,8 @@ Route::middleware('auth')->group(function () {
     Route::get('/lobi/{game}/status', [LobbyController::class, 'status'])->name('lobby.status');
     Route::post('/lobi/{game}/pridruzi', [LobbyController::class, 'join'])->name('lobby.join');
     Route::post('/lobi/{game}/pokreni', [LobbyController::class, 'start'])->name('lobby.start');
+    Route::post('/lobi/{game}/ugasi', [LobbyController::class, 'cancel'])->name('lobby.cancel');
+    Route::post('/lobi/{game}/napusti', [LobbyController::class, 'leave'])->name('lobby.leave');
 });
 
 // ---- Admin ----

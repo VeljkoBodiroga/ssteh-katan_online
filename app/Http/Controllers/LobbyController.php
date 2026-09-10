@@ -114,4 +114,26 @@ class LobbyController extends Controller
 
         return redirect()->route('play', ['game' => $game->id]);
     }
+
+    // POST /lobi/{game}/ugasi — SAMO kreator gasi ceo lobi (brise partiju, svi izlete)
+    public function cancel(Request $request, Game $game)
+    {
+        abort_unless($game->created_by === $request->user()->id, 403, 'Samo kreator lobija može da ga ugasi.');
+        abort_unless($game->status === 'lobby', 422, 'Partija je već pokrenuta.');
+
+        $game->delete();
+
+        return redirect()->route('lobby.index')->with('status', 'Lobi je ugašen.');
+    }
+
+    // POST /lobi/{game}/napusti — obican igrac (ne kreator) napusta lobi
+    public function leave(Request $request, Game $game)
+    {
+        abort_if($game->created_by === $request->user()->id, 403, 'Kreator ne može da napusti sopstveni lobi — ugasi ga.');
+        abort_unless($game->status === 'lobby', 422, 'Partija je već pokrenuta.');
+
+        $game->players()->detach($request->user()->id);
+
+        return redirect()->route('lobby.index')->with('status', 'Napustio si lobi.');
+    }
 }

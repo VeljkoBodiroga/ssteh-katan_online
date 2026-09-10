@@ -3,9 +3,8 @@
 @section('title', 'Lobi')
 
 @section('content')
-<div class="login-container">
-    <div class="login-wrapper" style="grid-template-columns: 1fr 1fr; max-width: 900px;">
-
+<div class="lobby-page">
+    <div class="lobby-actions">
         <form method="POST" action="{{ route('lobby.store') }}" class="login-form">
             @csrf
             <h2>Napravi lobi</h2>
@@ -31,39 +30,34 @@
             <input type="text" name="code" placeholder="npr. AB12CD" style="text-transform:uppercase;" required>
             <button type="submit">Pridruži se</button>
         </form>
-    </div>
 
-    <div style="max-width:900px; margin:30px auto;">
-        <h2 style="color:#fff; text-align:center;">Otvoreni lobiji</h2>
+        <div class="lobby-open-list">
+            <h2>Otvoreni lobiji</h2>
 
-        @if ($openLobbies->isEmpty())
-            <p style="color:#ccc; text-align:center;">Trenutno nema otvorenih lobija. Napravi svoj!</p>
-        @else
-            <table class="stats-table">
-                <thead>
-                    <tr>
-                        <th>Kod</th>
-                        <th>Kreator</th>
-                        <th>Igrači</th>
-                        <th></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach ($openLobbies as $lobby)
+            @if ($openLobbies->isEmpty())
+                <p style="color:#23232e; text-align:center;">Trenutno nema otvorenih lobija. Napravi svoj!</p>
+            @else
+                <table class="stats-table">
+                    <thead>
                         <tr>
-                            <td>{{ $lobby->lobby_code }}</td>
-                            <td>{{ $lobby->creator->username }}</td>
-                            <td>{{ $lobby->players_count }} / {{ $lobby->max_players }}</td>
-                            <td>
-                                <a href="{{ route('lobby.show', $lobby) }}">
-                                    {{ $lobby->players->contains(auth()->id() ?? 0) ? 'Uđi' : 'Pridruži se' }}
-                                </a>
-                            </td>
+                            <th>Kod</th>
+                            <th>Kreator</th>
+                            <th>Igrači</th>
                         </tr>
-                    @endforeach
-                </tbody>
-            </table>
-        @endif
+                    </thead>
+                    <tbody>
+                        @foreach ($openLobbies as $lobby)
+                            <tr>
+                                <td>{{ $lobby->lobby_code }}</td>
+                                <td>{{ $lobby->creator->username }}</td>
+                                <td>{{ $lobby->players_count }} / {{ $lobby->max_players }}</td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+                
+            @endif
+        </div>
     </div>
 </div>
 @endsection

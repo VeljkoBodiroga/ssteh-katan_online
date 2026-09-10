@@ -1028,3 +1028,139 @@ body, html {
   font-weight: 700;
   border-color: transparent;
 }
+
+/* Ispravka: footer uvek na dnu ekrana, cak i kad ima malo sadrzaja na stranici */
+html, body {
+  height: 100%;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  margin: 0;
+}
+
+main {
+  flex: 1 0 auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.home-footer {
+  flex-shrink: 0;
+}
+
+.lobby-page {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+}
+
+.lobby-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 24px;
+  width: 100%;
+  max-width: 1100px;
+}
+
+.lobby-actions {
+  flex-wrap: nowrap;
+}
+
+.lobby-actions .login-form,
+.lobby-open-list {
+  flex: 1 1 300px;
+  min-width: 0;
+  width: auto;
+  max-width: 360px;
+}
+
+@media (max-width: 900px) {
+  .lobby-actions {
+    flex-wrap: wrap;
+  }
+}
+
+.lobby-open-list h2 {
+  color: #fff;
+  text-align: center;
+  margin-bottom: 12px;
+}
+
+
+.lobby-btn {
+  padding: 10px 26px;
+  border-radius: 30px;
+  font-weight: 700;
+  font-size: 15px;
+  border: none;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.lobby-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
+}
+
+.lobby-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+}
+
+.lobby-btn-primary {
+  background: #43a047;
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(67, 160, 71, 0.45);
+}
+
+.lobby-btn-primary:hover:not(:disabled) {
+  background: #388e3c;
+}
+
+.lobby-btn-danger {
+  background: #c62828;
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(198, 40, 40, 0.45);
+}
+
+.lobby-btn-danger:hover:not(:disabled) {
+  background: #b71c1c;
+}
+
+.login-form select {
+  width: 100%;
+  padding: 0.5rem;
+  margin-top: 0.25rem;
+  margin-bottom: 1rem;
+  border: 1px solid #444;
+  border-radius: 5px;
+  background-color: #2b2b38;
+  color: #fff;
+  font-size: 15px;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='white'><path d='M7 10l5 5 5-5z'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 18px;
+}
+
+.login-form select:focus {
+  outline: none;
+  border-color: #ffcc00;
+}
+
+.login-form select option {
+  background-color: #2b2b38;
+  color: #fff;
+}

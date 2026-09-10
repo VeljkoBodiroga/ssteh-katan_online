@@ -21,15 +21,29 @@
         <p id="waiting-msg" style="color:#999;">Čeka se da se pridruže još igrači...</p>
     </div>
 
-    <div style="text-align:center; margin-top:20px;">
+    <p id="closed-msg" style="display:none; text-align:center; color:#e53935; font-size:20px; font-weight:700; margin-top:20px;">
+        ⚠️ Lobi je ugašen. Vraćam te na listu lobija...
+    </p>
+
+    <div style="text-align:center; margin-top:20px; display:flex; flex-direction:column; align-items:center; gap:14px;">
         @if ($isCreator)
             <form method="POST" action="{{ route('lobby.start', $game) }}" id="start-form">
                 @csrf
-                <button type="submit" class="dice-btn" id="btn-start-lobby" disabled>Počni igru</button>
+                <button type="submit" class="lobby-btn lobby-btn-primary" id="btn-start-lobby" disabled>Počni igru</button>
             </form>
-            <p style="color:#999; font-size:14px;">Potrebno je bar 2 igrača da bi partija mogla da počne.</p>
+            <p style="color:#999; font-size:14px; margin:0;">Potrebno je bar 2 igrača da bi partija mogla da počne.</p>
+
+            <form method="POST" action="{{ route('lobby.cancel', $game) }}" onsubmit="return confirm('Sigurno gasiš lobi? Svi igrači će izaći.')">
+                @csrf
+                <button type="submit" class="lobby-btn lobby-btn-danger">Ugasi lobi</button>
+            </form>
         @else
-            <p style="color:#999;">Čekaj da kreator lobija pokrene partiju...</p>
+            <p style="color:#999; margin:0;">Čekaj da kreator lobija pokrene partiju...</p>
+
+            <form method="POST" action="{{ route('lobby.leave', $game) }}">
+                @csrf
+                <button type="submit" class="lobby-btn lobby-btn-danger">Izađi iz lobija</button>
+            </form>
         @endif
     </div>
 </div>
@@ -39,11 +53,23 @@
 <script>
     const statusUrl = "{{ route('lobby.status', $game) }}";
     const playUrl = "{{ route('play') }}";
+    const lobbyIndexUrl = "{{ route('lobby.index') }}";
     const isCreator = @json($isCreator);
+    let stopped = false;
 
     async function refreshLobby() {
+        if (stopped) return;
         try {
             const res = await fetch(statusUrl, { headers: { Accept: 'application/json' } });
+
+            if (res.status === 404) {
+                stopped = true;
+                document.getElementById('closed-msg').style.display = 'block';
+                setTimeout(() => { window.location.href = lobbyIndexUrl; }, 2000);
+                return;
+            }
+            if (!res.ok) throw new Error('bad response');
+
             const data = await res.json();
 
             document.getElementById('player-count').textContent = data.players.length;
@@ -62,8 +88,6 @@
                 document.getElementById('btn-start-lobby').disabled = data.players.length < 2;
             }
 
-            // Ako je kreator vec pokrenuo partiju (status vise nije 'lobby'), i drugi igraci
-            // treba automatski da odu na tablu.
             if (data.status !== 'lobby') {
                 window.location.href = `${playUrl}?game={{ $game->id }}`;
             }
