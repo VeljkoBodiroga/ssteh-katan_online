@@ -13,8 +13,8 @@ return new class extends Migration
             $table->id();
             $table->foreignId('created_by')->constrained('users')->cascadeOnDelete();
             $table->enum('status', ['setup', 'in_progress', 'finished'])->default('setup');
-            $table->json('board_state')->nullable();   // polja/brojevi na tabli
-            $table->json('log')->nullable();            // poslednja bacanja kocke
+            $table->json('board_state')->nullable();   
+            $table->json('log')->nullable();            
             $table->timestamp('started_at')->nullable();
             $table->timestamp('finished_at')->nullable();
             $table->timestamps();

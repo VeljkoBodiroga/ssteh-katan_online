@@ -8,10 +8,9 @@ use Illuminate\Http\Request;
 
 class ExpansionApiController extends Controller
 {
-    // GET /api/expansions — javno dostupno (koristi ga i frontend fetch da demonstrira sopstveni REST API)
-    public function index(Request $request)
+    public function index(Request $zahtev)
     {
-        $search = $request->string('search')->toString();
+        $search = $zahtev->string('search')->toString();
 
         $expansions = Expansion::when($search, fn ($q) => $q->where('title', 'like', "%{$search}%"))
             ->orderBy('title')

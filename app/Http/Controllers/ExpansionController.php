@@ -12,10 +12,10 @@ class ExpansionController extends Controller
      * Javna lista ekspanzija: pretraga + sortiranje + paginacija
      * (isto sto i Stranice/Ekspanzije.tsx u React verziji, samo sad iz baze)
      */
-    public function index(Request $request)
+    public function index(Request $zahtev)
     {
-        $search = $request->string('search')->toString();
-        $sort = $request->string('sort', 'title')->toString();
+        $search = $zahtev->string('search')->toString();
+        $sort = $zahtev->string('sort', 'title')->toString();
 
         $query = Expansion::query()
             ->when($search, fn ($q) => $q->where('title', 'like', "%{$search}%"));
@@ -34,20 +34,20 @@ class ExpansionController extends Controller
         return view('expansions.create');
     }
 
-    public function store(Request $request)
+    public function store(Request $zahtev)
     {
-        $data = $request->validate([
+        $podaci = $zahtev->validate([
             'title' => ['required', 'string', 'max:255'],
             'description' => ['required', 'string'],
             'image' => ['required', 'image', 'max:4096'],
         ]);
 
-        $path = $request->file('image')->store('expansions', 'public');
+        $putanja = $zahtev->file('image')->store('expansions', 'public');
 
         Expansion::create([
-            'title' => $data['title'],
-            'description' => $data['description'],
-            'image' => $path,
+            'title' => $podaci['title'],
+            'description' => $podaci['description'],
+            'image' => $putanja,
         ]);
 
         return redirect()->route('expansions.index')->with('status', 'Ekspanzija dodata.');
@@ -58,22 +58,22 @@ class ExpansionController extends Controller
         return view('expansions.edit', compact('expansion'));
     }
 
-    public function update(Request $request, Expansion $expansion)
+    public function update(Request $zahtev, Expansion $expansion)
     {
-        $data = $request->validate([
+        $podaci = $zahtev->validate([
             'title' => ['required', 'string', 'max:255'],
             'description' => ['required', 'string'],
             'image' => ['nullable', 'image', 'max:4096'],
         ]);
 
-        if ($request->hasFile('image')) {
+        if ($zahtev->hasFile('image')) {
             if ($expansion->image && Storage::disk('public')->exists($expansion->image)) {
                 Storage::disk('public')->delete($expansion->image);
             }
-            $data['image'] = $request->file('image')->store('expansions', 'public');
+            $podaci['image'] = $zahtev->file('image')->store('expansions', 'public');
         }
 
-        $expansion->update($data);
+        $expansion->update($podaci);
 
         return redirect()->route('expansions.index')->with('status', 'Ekspanzija izmenjena.');
     }

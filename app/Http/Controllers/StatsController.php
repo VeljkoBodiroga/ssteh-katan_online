@@ -10,17 +10,17 @@ class StatsController extends Controller
 {
     public function index()
     {
-        $user = Auth::user();
-        $stats = $user->playerStat;
+        $korisnik = Auth::user();
+        $stats = $korisnik->playerStat;
 
         // Poziv javnog veb servisa (isto sto i fetch(api.quotable.io) u React verziji).
         // Keširamo 60s da ne udaramo API pri svakom refresh-u (dodatna funkcionalnost: keširanje).
         $quote = Cache::remember('motivational_quote', 60, function () {
             try {
-                $response = Http::timeout(5)->get('https://api.quotable.io/random');
-                if ($response->ok()) {
-                    $data = $response->json();
-                    return "\"{$data['content']}\" — {$data['author']}";
+                $odgovor = Http::timeout(5)->get('https://api.quotable.io/random');
+                if ($odgovor->ok()) {
+                    $podaci = $odgovor->json();
+                    return "\"{$podaci['content']}\" — {$podaci['author']}";
                 }
             } catch (\Throwable $e) {
                 // ignorisi, koristi fallback ispod

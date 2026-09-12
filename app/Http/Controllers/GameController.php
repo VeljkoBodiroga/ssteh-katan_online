@@ -7,21 +7,21 @@ use Illuminate\Http\Request;
 
 class GameController extends Controller
 {
-    public function play(Request $request)
+    public function play(Request $zahtev)
     {
         $game = null;
-        $players = [];
+        $igraci = [];
 
-        if ($request->filled('game')) {
-            $game = Game::with('players')->findOrFail($request->integer('game'));
+        if ($zahtev->filled('game')) {
+            $game = Game::with('players')->findOrFail($zahtev->integer('game'));
 
             abort_unless(
-                $game->players->contains($request->user()->id) || $request->user()->isAdmin(),
+                $game->players->contains($zahtev->user()->id) || $zahtev->user()->isAdmin(),
                 403,
                 'Nisi deo ove partije.'
             );
 
-            $players = $game->players->map(fn ($u) => [
+            $igraci = $game->players->map(fn ($u) => [
                 'id' => $u->id,
                 'name' => $u->username,
             ])->values();
@@ -29,7 +29,7 @@ class GameController extends Controller
 
         return view('game.play', [
             'game' => $game,
-            'players' => $players,
+            'players' => $igraci,
         ]);
     }
 }

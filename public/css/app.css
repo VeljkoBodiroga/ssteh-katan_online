@@ -1187,3 +1187,71 @@ main {
 .option-btn {
   padding: 0;
 }
+
+#players-list li {
+  color: #23232e;
+  font-weight: 600;
+}
+
+
+.admin-add-btn {
+  margin-left: 10px;
+  padding: 10px 18px;
+  border-radius: 10px;
+  background: gold;
+  color: #1a1a1a;
+  font-weight: 700;
+  text-decoration: none;
+  transition: all 0.2s ease;
+  display: inline-block;
+}
+
+.admin-add-btn:hover {
+  background: #ffe066;
+  box-shadow: 0 0 12px gold;
+  transform: translateY(-2px);
+}
+
+.admin-actions {
+  margin-top: 14px;
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+
+.admin-edit-btn,
+.admin-delete-btn {
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 14px;
+  border: none;
+  cursor: pointer;
+  text-decoration: none;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.admin-edit-btn {
+  background: #f7cb64;
+  color: #1a1a1a;
+}
+
+.admin-edit-btn:hover {
+  background: #ffd700;
+  transform: translateY(-2px);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
+}
+
+.admin-delete-btn {
+  background: #c62828;
+  color: #fff;
+}
+
+.admin-delete-btn:hover {
+  background: #b71c1c;
+  transform: translateY(-2px);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
+}

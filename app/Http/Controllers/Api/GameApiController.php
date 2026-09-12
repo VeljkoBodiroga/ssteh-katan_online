@@ -12,8 +12,7 @@ use App\Models\PlayerStat;
 
 class GameApiController extends Controller
 {
-    // Ista "master" lista tromedja kao u public/js/game.js - MORA biti identicna,
-    // jer server proverava (validira) izbore igraca po ovim indeksima.
+    
     private const TROMEDJE = [
         [0, 1, 4], [1, 2, 5], [2, 5, 6],
         [0, 3, 4], [1, 4, 5],
@@ -27,88 +26,85 @@ class GameApiController extends Controller
         [14, 17, 18], [14, 15, 18],
     ];
 
-    // Ista lista "ivica" (moguci putevi) kao u public/js/game.js - svaka ivica je par
-    // indeksa u TROMEDJE (dva susedna temena koja dele tacno 2 zajednicka polja).
+    
     private const EDGES = [
         [0, 3], [0, 4], [1, 2], [1, 4], [2, 9], [3, 5], [4, 7], [5, 6], [5, 8], [6, 12],
         [7, 8], [7, 10], [8, 14], [9, 10], [9, 11], [10, 16], [11, 18], [12, 13], [13, 14], [13, 19],
         [14, 15], [15, 16], [15, 21], [16, 17], [17, 18], [17, 23], [19, 20], [20, 21], [21, 22], [22, 23],
     ];
 
-    // GET /api/games — sve partije trenutnog korisnika
-    public function index(Request $request)
+    
+    public function index(Request $zahtev)
     {
-        $games = $request->user()->games()->latest()->get();
+        $games = $zahtev->user()->games()->latest()->get();
         return response()->json($games);
     }
 
-    // POST /api/games — kreiranje nove partije (koristi se SAMO u "hotseat" rezimu bez lobija)
-    public function store(Request $request)
+    public function store(Request $zahtev)
     {
-        $data = $request->validate([
+        $podaci = $zahtev->validate([
             'board_state' => ['required', 'array'],
         ]);
 
-        $game = DB::transaction(function () use ($data, $request) {
+        $game = DB::transaction(function () use ($podaci, $zahtev) {
             $game = Game::create([
-                'created_by' => $request->user()->id,
+                'created_by' => $zahtev->user()->id,
                 'status' => 'in_progress',
-                'board_state' => $data['board_state'],
+                'board_state' => $podaci['board_state'],
                 'started_at' => now(),
             ]);
 
-            $game->players()->attach($request->user()->id, [
+            $game->players()->attach($zahtev->user()->id, [
                 'resources' => json_encode(['drvo' => 0, 'ovca' => 0, 'psenica' => 0, 'cigla' => 0, 'kamen' => 0]),
             ]);
 
             return $game;
         });
 
-        return response()->json($this->present($game), 201);
+        return response()->json($this->pripremiOdgovor($game), 201);
     }
 
-    // GET /api/games/{game} — detalji partije (koristi se za polling od strane SVIH igraca)
     public function show(Game $game)
     {
-        $this->authorizeAccess($game);
-        return response()->json($this->present($game));
+        $this->proveriPristup($game);
+        return response()->json($this->pripremiOdgovor($game));
     }
 
     // GET /api/games/{game}/players — ugnjezdena ruta: igraci u partiji
     public function players(Game $game)
     {
-        $this->authorizeAccess($game);
+        $this->proveriPristup($game);
         return response()->json($game->players);
     }
 
     // PUT /api/games/{game} — opste cuvanje (koristi ga npr. "Sacuvaj" dugme u hotseat rezimu)
-    public function update(Request $request, Game $game)
+    public function update(Request $zahtev, Game $game)
     {
-        $this->authorizeAccess($game);
+        $this->proveriPristup($game);
 
-        $data = $request->validate([
+        $podaci = $zahtev->validate([
             'board_state' => ['sometimes', 'array'],
             'status' => ['sometimes', 'in:setup,in_progress,finished'],
         ]);
 
-        $game->update($data);
+        $game->update($podaci);
 
-        return response()->json($this->present($game));
+        return response()->json($this->pripremiOdgovor($game));
     }
 
     // POST /api/games/{game}/setup-board — SAMO kreator postavlja tablu (polja+brojevi)
     // i time otvara fazu biranja terena za sve igrace.
-    public function setupBoard(Request $request, Game $game)
+    public function setupBoard(Request $zahtev, Game $game)
     {
-        $this->authorizeAccess($game);
-        abort_unless($game->created_by === $request->user()->id, 403, 'Samo kreator partije postavlja tablu.');
+        $this->proveriPristup($game);
+        abort_unless($game->created_by === $zahtev->user()->id, 403, 'Samo kreator partije postavlja tablu.');
 
-        $data = $request->validate([
+        $podaci = $zahtev->validate([
             'tiles' => ['required', 'array', 'size:19'],
             'numbers' => ['required', 'array', 'size:19'],
         ]);
 
-        $turnOrder = DB::table('game_players')
+        $redosledPoteza = DB::table('game_players')
             ->where('game_id', $game->id)
             ->orderBy('id')
             ->pluck('user_id')
@@ -118,9 +114,9 @@ class GameApiController extends Controller
         $game->update([
             'status' => 'in_progress',
             'board_state' => [
-                'tiles' => $data['tiles'],
-                'numbers' => $data['numbers'],
-                'turnOrder' => $turnOrder,
+                'tiles' => $podaci['tiles'],
+                'numbers' => $podaci['numbers'],
+                'turnOrder' => $redosledPoteza,
                 'phase' => 'picking',
                 'pickTurnIndex' => 0,
                 'pickSubPhase' => 'settlement',
@@ -133,183 +129,182 @@ class GameApiController extends Controller
             ],
         ]);
 
-        return response()->json($this->present($game->fresh()));
+        return response()->json($this->pripremiOdgovor($game->fresh()));
     }
 
     // POST /api/games/{game}/pick — igrac na potezu bira teren (tromedju)
-    public function pick(Request $request, Game $game)
+    public function pick(Request $zahtev, Game $game)
     {
-        $this->authorizeAccess($game);
+        $this->proveriPristup($game);
 
-        $data = $request->validate([
+        $podaci = $zahtev->validate([
             'tri_index' => ['required', 'integer', 'min:0', 'max:23'],
         ]);
 
-        $bs = $game->board_state ?? [];
-        abort_unless(($bs['phase'] ?? null) === 'picking', 422, 'Partija nije u fazi biranja terena.');
+        $stanjeTable = $game->board_state ?? [];
+        abort_unless(($stanjeTable['phase'] ?? null) === 'picking', 422, 'Partija nije u fazi biranja terena.');
 
-        $turnOrder = $bs['turnOrder'] ?? [];
-        $pickIdx = $bs['pickTurnIndex'] ?? 0;
-        $totalPicks = count($turnOrder) * 2;
+        $redosledPoteza = $stanjeTable['turnOrder'] ?? [];
+        $indeksBiranja = $stanjeTable['pickTurnIndex'] ?? 0;
+        $ukupnoIzbora = count($redosledPoteza) * 2;
 
-        abort_if($pickIdx >= $totalPicks, 422, 'Biranje terena je već završeno.');
+        abort_if($indeksBiranja >= $ukupnoIzbora, 422, 'Biranje terena je već završeno.');
 
-        $currentUserId = $turnOrder[$pickIdx % count($turnOrder)];
-        abort_unless($currentUserId === $request->user()->id, 403, 'Nije tvoj red za biranje terena.');
+        $idTrenutnogIgraca = $redosledPoteza[$indeksBiranja % count($redosledPoteza)];
+        abort_unless($idTrenutnogIgraca === $zahtev->user()->id, 403, 'Nije tvoj red za biranje terena.');
 
-        $fields = self::TROMEDJE[$data['tri_index']];
+        $polja = self::TROMEDJE[$podaci['tri_index']];
 
-foreach (($bs['playerTromedje'] ?? []) as $t) {
-            $common = array_intersect($fields, $t['fields']);
-            abort_if(count($common) >= 2, 422, 'Taj teren je zauzet ili je sused već zauzetom terenu.');
+foreach (($stanjeTable['playerTromedje'] ?? []) as $t) {
+            $zajednicka = array_intersect($polja, $t['fields']);
+            abort_if(count($zajednicka) >= 2, 422, 'Taj teren je zauzet ili je sused već zauzetom terenu.');
         }
         // Broj vec izabranih sela ovog igraca PRE ovog izbora - u pravoj Catan igri
         // pocetni resursi se dobijaju samo za DRUGO selo, ne za prvo.
-        $priorCount = collect($bs['playerTromedje'] ?? [])->where('id', $currentUserId)->count();
+        $brojPre = collect($stanjeTable['playerTromedje'] ?? [])->where('id', $idTrenutnogIgraca)->count();
 
-        $bs['playerTromedje'][] = ['id' => $currentUserId, 'fields' => array_values($fields), 'type' => 'settlement', 'tri_index' => $data['tri_index']];
+        $stanjeTable['playerTromedje'][] = ['id' => $idTrenutnogIgraca, 'fields' => array_values($polja), 'type' => 'settlement', 'tri_index' => $podaci['tri_index']];
 
         // NE predajemo red odmah - igrac prvo MORA da izgradi (besplatan) put tacno
         // pored ovog sela pre nego sto potez predje na sledeceg igraca.
-        $bs['pickSubPhase'] = 'road';
-        $bs['pendingRoadVertex'] = $data['tri_index'];
+        $stanjeTable['pickSubPhase'] = 'road';
+        $stanjeTable['pendingRoadVertex'] = $podaci['tri_index'];
 
-        $game->update(['board_state' => $bs]);
+        $game->update(['board_state' => $stanjeTable]);
 
-        if ($priorCount >= 1) {
-            $starting = [];
-            foreach ($fields as $idx) {
-                $res = $bs['tiles'][$idx] ?? null;
+        if ($brojPre >= 1) {
+            $pocetniResursi = [];
+            foreach ($polja as $idx) {
+                $res = $stanjeTable['tiles'][$idx] ?? null;
                 if ($res && $res !== 'pustinja') {
-                    $starting[$res] = ($starting[$res] ?? 0) + 1;
+                    $pocetniResursi[$res] = ($pocetniResursi[$res] ?? 0) + 1;
                 }
             }
-            if ($starting) {
-                $this->addResources($game, $currentUserId, $starting);
+            if ($pocetniResursi) {
+                $this->dodajResurse($game, $idTrenutnogIgraca, $pocetniResursi);
             }
         }
 
-        return response()->json($this->present($game->fresh()));
+        return response()->json($this->pripremiOdgovor($game->fresh()));
     }
 
     // POST /api/games/{game}/pick-road — besplatan put ODMAH pored sela koje je upravo izabrano
     // (deo pocetne faze), tek posle ovoga red prelazi na sledeceg igraca.
-    public function pickRoad(Request $request, Game $game)
+    public function pickRoad(Request $zahtev, Game $game)
     {
-        $this->authorizeAccess($game);
+        $this->proveriPristup($game);
 
-        $data = $request->validate([
+        $podaci = $zahtev->validate([
             'edge_index' => ['required', 'integer', 'min:0', 'max:' . (count(self::EDGES) - 1)],
         ]);
 
-        $bs = $game->board_state ?? [];
-        abort_unless(($bs['phase'] ?? null) === 'picking', 422, 'Partija nije u fazi biranja.');
-        abort_unless(($bs['pickSubPhase'] ?? null) === 'road', 422, 'Prvo moraš da izabereš selo.');
+        $stanjeTable = $game->board_state ?? [];
+        abort_unless(($stanjeTable['phase'] ?? null) === 'picking', 422, 'Partija nije u fazi biranja.');
+        abort_unless(($stanjeTable['pickSubPhase'] ?? null) === 'road', 422, 'Prvo moraš da izabereš selo.');
 
-        $turnOrder = $bs['turnOrder'] ?? [];
-        $pickIdx = $bs['pickTurnIndex'] ?? 0;
-        $currentUserId = $turnOrder[$pickIdx % count($turnOrder)];
-        abort_unless($currentUserId === $request->user()->id, 403, 'Nije tvoj red.');
+        $redosledPoteza = $stanjeTable['turnOrder'] ?? [];
+        $indeksBiranja = $stanjeTable['pickTurnIndex'] ?? 0;
+        $idTrenutnogIgraca = $redosledPoteza[$indeksBiranja % count($redosledPoteza)];
+        abort_unless($idTrenutnogIgraca === $zahtev->user()->id, 403, 'Nije tvoj red.');
 
-        $edge = self::EDGES[$data['edge_index']];
-        $pendingVertex = $bs['pendingRoadVertex'] ?? null;
-        abort_unless(in_array($pendingVertex, $edge, true), 422, 'Put mora biti tačno pored sela koje si upravo izabrao.');
+        $ivica = self::EDGES[$podaci['edge_index']];
+        $ocekivanoTeme = $stanjeTable['pendingRoadVertex'] ?? null;
+        abort_unless(in_array($ocekivanoTeme, $ivica, true), 422, 'Put mora biti tačno pored sela koje si upravo izabrao.');
 
-        $roads = $bs['roads'] ?? [];
-        abort_if(collect($roads)->contains(fn ($r) => $r['edge_index'] === $data['edge_index']), 422, 'Tu već postoji put.');
+        $putevi = $stanjeTable['roads'] ?? [];
+        abort_if(collect($putevi)->contains(fn ($r) => $r['edge_index'] === $podaci['edge_index']), 422, 'Tu već postoji put.');
 
-        $roads[] = ['id' => $currentUserId, 'edge_index' => $data['edge_index']];
-        $bs['roads'] = $roads;
+        $putevi[] = ['id' => $idTrenutnogIgraca, 'edge_index' => $podaci['edge_index']];
+        $stanjeTable['roads'] = $putevi;
 
-        $totalPicks = count($turnOrder) * 2;
-        $bs['pickTurnIndex'] = $pickIdx + 1;
-        $bs['pickSubPhase'] = 'settlement';
-        $bs['pendingRoadVertex'] = null;
+        $ukupnoIzbora = count($redosledPoteza) * 2;
+        $stanjeTable['pickTurnIndex'] = $indeksBiranja + 1;
+        $stanjeTable['pickSubPhase'] = 'settlement';
+        $stanjeTable['pendingRoadVertex'] = null;
 
-        if ($bs['pickTurnIndex'] >= $totalPicks) {
-            $bs['phase'] = 'playing';
-            $bs['playTurnIndex'] = 0;
-            $bs['hasRolledThisTurn'] = false;
+        if ($stanjeTable['pickTurnIndex'] >= $ukupnoIzbora) {
+            $stanjeTable['phase'] = 'playing';
+            $stanjeTable['playTurnIndex'] = 0;
+            $stanjeTable['hasRolledThisTurn'] = false;
         }
 
-        $game->update(['board_state' => $bs]);
+        $game->update(['board_state' => $stanjeTable]);
 
-        return response()->json($this->present($game->fresh()));
+        return response()->json($this->pripremiOdgovor($game->fresh()));
     }
 
     // POST /api/games/{game}/roll — SAMO igrac na potezu baca kockice, JEDNOM po potezu.
     // Vise NE predaje red automatski - za to sluzi posebna /end-turn ruta.
-    public function roll(Request $request, Game $game)
+    public function roll(Request $zahtev, Game $game)
     {
-        $this->authorizeAccess($game);
+        $this->proveriPristup($game);
 
-        $bs = $game->board_state ?? [];
-        abort_unless(($bs['phase'] ?? null) === 'playing', 422, 'Partija nije u fazi bacanja kocke.');
+        $stanjeTable = $game->board_state ?? [];
+        abort_unless(($stanjeTable['phase'] ?? null) === 'playing', 422, 'Partija nije u fazi bacanja kocke.');
 
-        $turnOrder = $bs['turnOrder'] ?? [];
-        abort_if(empty($turnOrder), 422, 'Partija nema definisan redosled poteza.');
+        $redosledPoteza = $stanjeTable['turnOrder'] ?? [];
+        abort_if(empty($redosledPoteza), 422, 'Partija nema definisan redosled poteza.');
 
-        $playIdx = $bs['playTurnIndex'] ?? 0;
-        $currentUserId = $turnOrder[$playIdx % count($turnOrder)];
-        abort_unless($currentUserId === $request->user()->id, 403, 'Nije tvoj red za bacanje kocke.');
-        abort_if($bs['hasRolledThisTurn'] ?? false, 422, 'Već si bacio kockicu ovog poteza.');
+        $playIdx = $stanjeTable['playTurnIndex'] ?? 0;
+        $idTrenutnogIgraca = $redosledPoteza[$playIdx % count($redosledPoteza)];
+        abort_unless($idTrenutnogIgraca === $zahtev->user()->id, 403, 'Nije tvoj red za bacanje kocke.');
+        abort_if($stanjeTable['hasRolledThisTurn'] ?? false, 422, 'Već si bacio kockicu ovog poteza.');
 
         try {
-            $response = Http::timeout(5)->get('https://www.dejete.com/api/dice', [
+            $odgovor = Http::timeout(5)->get('https://www.dejete.com/api/dice', [
                 'numdice' => 2,
                 'numsides' => 6,
             ]);
-            $sum = $response->ok() ? array_sum($response->json('dice', [])) : (random_int(1, 6) + random_int(1, 6));
+            $zbir = $odgovor->ok() ? array_sum($odgovor->json('dice', [])) : (random_int(1, 6) + random_int(1, 6));
         } catch (\Throwable $e) {
-            $sum = random_int(1, 6) + random_int(1, 6);
+            $zbir = random_int(1, 6) + random_int(1, 6);
         }
 
-                if ($sum == 7) {
-            // Na 7 se NE dele resursi - umesto toga, svako ko ima vise od 7 karata
-            // mora da odbaci pola (zaokruzeno na dole).
-            $mustDiscard = [];
-            $allPivots = DB::table('game_players')->where('game_id', $game->id)->get();
-            foreach ($allPivots as $pivot) {
-                $resources = $pivot->resources ? json_decode($pivot->resources, true) : [];
-                $total = array_sum($resources);
-                if ($total > 7) {
-                    $mustDiscard[$pivot->user_id] = intdiv($total, 2);
+                if ($zbir == 7) {
+            
+            $moraOdbaciti = [];
+            $sviPivoti = DB::table('game_players')->where('game_id', $game->id)->get();
+            foreach ($sviPivoti as $pivotPodaci) {
+                $resursi = $pivotPodaci->resources ? json_decode($pivotPodaci->resources, true) : [];
+                $ukupno = array_sum($resursi);
+                if ($ukupno > 7) {
+                    $moraOdbaciti[$pivotPodaci->user_id] = intdiv($ukupno, 2);
                 }
             }
-            $bs['mustDiscard'] = $mustDiscard;
+            $stanjeTable['mustDiscard'] = $moraOdbaciti;
         } else {
-            foreach (($bs['playerTromedje'] ?? []) as $t) {
-                $gained = [];
-                $amount = ($t['type'] ?? 'settlement') === 'city' ? 2 : 1; // grad daje duplo resursa
+            foreach (($stanjeTable['playerTromedje'] ?? []) as $t) {
+                $dobijeno = [];
+                $iznos = ($t['type'] ?? 'settlement') === 'city' ? 2 : 1; 
                 foreach ($t['fields'] as $idx) {
-                    $num = $bs['numbers'][$idx] ?? null;
-                    $res = $bs['tiles'][$idx] ?? null;
-                    if ($num == $sum && $res && $res !== 'pustinja') {
-                        $gained[$res] = ($gained[$res] ?? 0) + $amount;
+                    $brojPolja = $stanjeTable['numbers'][$idx] ?? null;
+                    $res = $stanjeTable['tiles'][$idx] ?? null;
+                    if ($brojPolja == $zbir && $res && $res !== 'pustinja') {
+                        $dobijeno[$res] = ($dobijeno[$res] ?? 0) + $iznos;
                     }
                 }
-                if ($gained) {
-                    $this->addResources($game, $t['id'], $gained);
+                if ($dobijeno) {
+                    $this->dodajResurse($game, $t['id'], $dobijeno);
                 }
             }
         }
 
-        $log = $bs['log'] ?? [];
-        array_unshift($log, "Bačeno je {$sum}");
-        $bs['log'] = array_slice($log, 0, 4);
-        $bs['hasRolledThisTurn'] = true;
+        $istorija = $stanjeTable['log'] ?? [];
+        array_unshift($istorija, "Bačeno je {$zbir}");
+        $stanjeTable['log'] = array_slice($istorija, 0, 4);
+        $stanjeTable['hasRolledThisTurn'] = true;
 
-        $game->update(['board_state' => $bs]);
+        $game->update(['board_state' => $stanjeTable]);
 
-        return response()->json($this->present($game->fresh()));
+        return response()->json($this->pripremiOdgovor($game->fresh()));
     }
 
     // POST /api/games/{game}/discard — igrac odbacuje karte posle bacenog 7
-    public function discard(Request $request, Game $game)
+    public function discard(Request $zahtev, Game $game)
     {
-        $this->authorizeAccess($game);
+        $this->proveriPristup($game);
 
-        $data = $request->validate([
+        $podaci = $zahtev->validate([
             'resources' => ['required', 'array'],
             'resources.drvo' => ['integer', 'min:0'],
             'resources.ovca' => ['integer', 'min:0'],
@@ -318,331 +313,329 @@ foreach (($bs['playerTromedje'] ?? []) as $t) {
             'resources.kamen' => ['integer', 'min:0'],
         ]);
 
-        $bs = $game->board_state ?? [];
-        $mustDiscard = $bs['mustDiscard'] ?? [];
-        $userId = $request->user()->id;
+        $stanjeTable = $game->board_state ?? [];
+        $moraOdbaciti = $stanjeTable['mustDiscard'] ?? [];
+        $idKorisnika = $zahtev->user()->id;
 
-        abort_unless(array_key_exists($userId, $mustDiscard), 422, 'Ne duguješ odbacivanje karata.');
+        abort_unless(array_key_exists($idKorisnika, $moraOdbaciti), 422, 'Ne duguješ odbacivanje karata.');
 
-        $required = $mustDiscard[$userId];
-        $totalGiven = array_sum($data['resources']);
-        abort_unless($totalGiven === $required, 422, "Moraš odbaciti tačno {$required} karata.");
+        $potrebnoZaOdbacivanje = $moraOdbaciti[$idKorisnika];
+        $ukupnoDato = array_sum($podaci['resources']);
+        abort_unless($ukupnoDato === $potrebnoZaOdbacivanje, 422, "Moraš odbaciti tačno {$potrebnoZaOdbacivanje} karata.");
 
-        $pivot = DB::table('game_players')->where('game_id', $game->id)->where('user_id', $userId)->first();
-        $resources = $pivot && $pivot->resources ? json_decode($pivot->resources, true) : [];
-        foreach ($data['resources'] as $res => $qty) {
-            abort_if(($resources[$res] ?? 0) < $qty, 422, 'Nemaš toliko tog resursa.');
+        $pivotPodaci = DB::table('game_players')->where('game_id', $game->id)->where('user_id', $idKorisnika)->first();
+        $resursi = $pivotPodaci && $pivotPodaci->resources ? json_decode($pivotPodaci->resources, true) : [];
+        foreach ($podaci['resources'] as $res => $kolicina) {
+            abort_if(($resursi[$res] ?? 0) < $kolicina, 422, 'Nemaš toliko tog resursa.');
         }
 
-        $delta = [];
-        foreach ($data['resources'] as $res => $qty) {
-            $delta[$res] = -$qty;
+        $razlika = [];
+        foreach ($podaci['resources'] as $res => $kolicina) {
+            $razlika[$res] = -$kolicina;
         }
-        $this->addResources($game, $userId, $delta);
+        $this->dodajResurse($game, $idKorisnika, $razlika);
 
-        unset($mustDiscard[$userId]);
-        $bs['mustDiscard'] = $mustDiscard;
-        $game->update(['board_state' => $bs]);
+        unset($moraOdbaciti[$idKorisnika]);
+        $stanjeTable['mustDiscard'] = $moraOdbaciti;
+        $game->update(['board_state' => $stanjeTable]);
 
-        return response()->json($this->present($game->fresh()));
+        return response()->json($this->pripremiOdgovor($game->fresh()));
     }
 
     // POST /api/games/{game}/build-road — gradnja puta (1 drvo + 1 cigla)
-    public function buildRoad(Request $request, Game $game)
+    public function buildRoad(Request $zahtev, Game $game)
     {
-        $this->authorizeAccess($game);
+        $this->proveriPristup($game);
 
-        $data = $request->validate([
+        $podaci = $zahtev->validate([
             'edge_index' => ['required', 'integer', 'min:0', 'max:' . (count(self::EDGES) - 1)],
         ]);
 
-        $bs = $game->board_state ?? [];
-        abort_unless(($bs['phase'] ?? null) === 'playing', 422, 'Partija nije u toku.');
+        $stanjeTable = $game->board_state ?? [];
+        abort_unless(($stanjeTable['phase'] ?? null) === 'playing', 422, 'Partija nije u toku.');
 
-        $turnOrder = $bs['turnOrder'] ?? [];
-        $playIdx = $bs['playTurnIndex'] ?? 0;
-        $currentUserId = $turnOrder[$playIdx % count($turnOrder)];
-        abort_unless($currentUserId === $request->user()->id, 403, 'Nije tvoj red.');
+        $redosledPoteza = $stanjeTable['turnOrder'] ?? [];
+        $playIdx = $stanjeTable['playTurnIndex'] ?? 0;
+        $idTrenutnogIgraca = $redosledPoteza[$playIdx % count($redosledPoteza)];
+        abort_unless($idTrenutnogIgraca === $zahtev->user()->id, 403, 'Nije tvoj red.');
 
-        $edge = self::EDGES[$data['edge_index']];
-        $roads = $bs['roads'] ?? [];
+        $ivica = self::EDGES[$podaci['edge_index']];
+        $putevi = $stanjeTable['roads'] ?? [];
 
-        abort_if(collect($roads)->contains(fn ($r) => $r['edge_index'] === $data['edge_index']), 422, 'Tu već postoji put.');
+        abort_if(collect($putevi)->contains(fn ($r) => $r['edge_index'] === $podaci['edge_index']), 422, 'Tu već postoji put.');
 
-        // Provera resursa (1 drvo + 1 cigla).
-        $pivot = DB::table('game_players')->where('game_id', $game->id)->where('user_id', $currentUserId)->first();
-        $resources = $pivot && $pivot->resources ? json_decode($pivot->resources, true) : [];
-        abort_if(($resources['drvo'] ?? 0) < 1 || ($resources['cigla'] ?? 0) < 1, 422, 'Nemaš dovoljno resursa (1 drvo + 1 cigla).');
+        
+        $pivotPodaci = DB::table('game_players')->where('game_id', $game->id)->where('user_id', $idTrenutnogIgraca)->first();
+        $resursi = $pivotPodaci && $pivotPodaci->resources ? json_decode($pivotPodaci->resources, true) : [];
+        abort_if(($resursi['drvo'] ?? 0) < 1 || ($resursi['cigla'] ?? 0) < 1, 422, 'Nemaš dovoljno resursa (1 drvo + 1 cigla).');
 
-        // Provera povezanosti: bar jedno teme ivice mora biti moje selo, ili kraj mog
-        // vec postojeceg puta (a ta tacka ne sme biti tudje selo - "ne sece kucu drugog igraca").
-                $mySettlementVertexIndices = collect($bs['playerTromedje'] ?? [])
-            ->where('id', $currentUserId)
+                $indeksiMojihSela = collect($stanjeTable['playerTromedje'] ?? [])
+            ->where('id', $idTrenutnogIgraca)
             ->pluck('tri_index');
 
-        // Sva temena gde postoji BILO CIJE selo, da znamo gde se moj put "prekida".
-        $enemySettlementVertexIndices = collect($bs['playerTromedje'] ?? [])
-            ->where('id', '!=', $currentUserId)
+       
+        $indeksiTudjihSela = collect($stanjeTable['playerTromedje'] ?? [])
+            ->where('id', '!=', $idTrenutnogIgraca)
             ->pluck('tri_index');
 
-        // Temena na krajevima MOJIH postojecih puteva.
-        $myRoadVertices = collect($roads)
-            ->where('id', $currentUserId)
+        
+        $temenaMojihPuteva = collect($putevi)
+            ->where('id', $idTrenutnogIgraca)
             ->flatMap(fn ($r) => self::EDGES[$r['edge_index']])
             ->unique();
 
-        $connected = false;
-        foreach ($edge as $vertex) {
-            $isMySettlement = $mySettlementVertexIndices->contains($vertex);
-            $isMyRoadEnd = $myRoadVertices->contains($vertex) && ! $enemySettlementVertexIndices->contains($vertex);
-            if ($isMySettlement || $isMyRoadEnd) {
-                $connected = true;
+        $povezano = false;
+        foreach ($ivica as $teme) {
+            $jeMojeSelo = $indeksiMojihSela->contains($teme);
+            $jeKrajMogPuta = $temenaMojihPuteva->contains($teme) && ! $indeksiTudjihSela->contains($teme);
+            if ($jeMojeSelo || $jeKrajMogPuta) {
+                $povezano = true;
                 break;
             }
         }
-        abort_unless($connected, 422, 'Put mora biti nadovezan na tvoje selo ili tvoj postojeći put (i ne sme preseći tuđe selo).');
+        abort_unless($povezano, 422, 'Put mora biti nadovezan na tvoje selo ili tvoj postojeći put (i ne sme preseći tuđe selo).');
 
-        $roads[] = ['id' => $currentUserId, 'edge_index' => $data['edge_index']];
-        $bs['roads'] = $roads;
-        $game->update(['board_state' => $bs]);
+        $putevi[] = ['id' => $idTrenutnogIgraca, 'edge_index' => $podaci['edge_index']];
+        $stanjeTable['roads'] = $putevi;
+        $game->update(['board_state' => $stanjeTable]);
 
-        $this->addResources($game, $currentUserId, ['drvo' => -1, 'cigla' => -1]);
+        $this->dodajResurse($game, $idTrenutnogIgraca, ['drvo' => -1, 'cigla' => -1]);
 
-        return response()->json($this->present($game->fresh()));
+        return response()->json($this->pripremiOdgovor($game->fresh()));
     }
 
     // POST /api/games/{game}/build-settlement — novo selo tokom igre (1 drvo+1 cigla+1 ovca+1 psenica)
-    public function buildSettlement(Request $request, Game $game)
+    public function buildSettlement(Request $zahtev, Game $game)
     {
-        $this->authorizeAccess($game);
+        $this->proveriPristup($game);
 
-        $data = $request->validate([
+        $podaci = $zahtev->validate([
             'tri_index' => ['required', 'integer', 'min:0', 'max:23'],
         ]);
 
-        $bs = $game->board_state ?? [];
-        abort_unless(($bs['phase'] ?? null) === 'playing', 422, 'Partija nije u toku.');
+        $stanjeTable = $game->board_state ?? [];
+        abort_unless(($stanjeTable['phase'] ?? null) === 'playing', 422, 'Partija nije u toku.');
 
-        $turnOrder = $bs['turnOrder'] ?? [];
-        $playIdx = $bs['playTurnIndex'] ?? 0;
-        $currentUserId = $turnOrder[$playIdx % count($turnOrder)];
-        abort_unless($currentUserId === $request->user()->id, 403, 'Nije tvoj red.');
+        $redosledPoteza = $stanjeTable['turnOrder'] ?? [];
+        $playIdx = $stanjeTable['playTurnIndex'] ?? 0;
+        $idTrenutnogIgraca = $redosledPoteza[$playIdx % count($redosledPoteza)];
+        abort_unless($idTrenutnogIgraca === $zahtev->user()->id, 403, 'Nije tvoj red.');
 
-        $fields = self::TROMEDJE[$data['tri_index']];
-        $playerTromedje = $bs['playerTromedje'] ?? [];
+        $polja = self::TROMEDJE[$podaci['tri_index']];
+        $tromedjeIgraca = $stanjeTable['playerTromedje'] ?? [];
 
         // Pravilo razdaljine: ne sme deliti 2 zajednicka polja ni sa jednim postojecim
         // naseljem/gradom (bilo cijim) - to znaci "susedno teme".
-        foreach ($playerTromedje as $t) {
-            $common = array_intersect($fields, $t['fields']);
-            abort_if(count($common) >= 2, 422, 'Selo je preblizu drugog naselja.');
+        foreach ($tromedjeIgraca as $t) {
+            $zajednicka = array_intersect($polja, $t['fields']);
+            abort_if(count($zajednicka) >= 2, 422, 'Selo je preblizu drugog naselja.');
         }
 
         // Mora biti povezano MOJIM putem (bar jedan moj put ima ovo teme kao kraj).
-        $roads = $bs['roads'] ?? [];
-        $myRoadVertices = collect($roads)
-            ->where('id', $currentUserId)
+        $putevi = $stanjeTable['roads'] ?? [];
+        $temenaMojihPuteva = collect($putevi)
+            ->where('id', $idTrenutnogIgraca)
             ->flatMap(fn ($r) => self::EDGES[$r['edge_index']])
             ->unique();
-        abort_unless($myRoadVertices->contains($data['tri_index']), 422, 'Selo mora biti povezano tvojim putem.');
+        abort_unless($temenaMojihPuteva->contains($podaci['tri_index']), 422, 'Selo mora biti povezano tvojim putem.');
 
         // Resursi.
-        $pivot = DB::table('game_players')->where('game_id', $game->id)->where('user_id', $currentUserId)->first();
-        $resources = $pivot && $pivot->resources ? json_decode($pivot->resources, true) : [];
-        foreach (['drvo', 'cigla', 'ovca', 'psenica'] as $need) {
-            abort_if(($resources[$need] ?? 0) < 1, 422, 'Nemaš dovoljno resursa (1 drvo + 1 cigla + 1 ovca + 1 pšenica).');
+        $pivotPodaci = DB::table('game_players')->where('game_id', $game->id)->where('user_id', $idTrenutnogIgraca)->first();
+        $resursi = $pivotPodaci && $pivotPodaci->resources ? json_decode($pivotPodaci->resources, true) : [];
+        foreach (['drvo', 'cigla', 'ovca', 'psenica'] as $potrebnoResurs) {
+            abort_if(($resursi[$potrebnoResurs] ?? 0) < 1, 422, 'Nemaš dovoljno resursa (1 drvo + 1 cigla + 1 ovca + 1 pšenica).');
         }
 
-        $playerTromedje[] = ['id' => $currentUserId, 'fields' => array_values($fields), 'type' => 'settlement', 'tri_index' => $data['tri_index']];
-        $bs['playerTromedje'] = $playerTromedje;
+        $tromedjeIgraca[] = ['id' => $idTrenutnogIgraca, 'fields' => array_values($polja), 'type' => 'settlement', 'tri_index' => $podaci['tri_index']];
+        $stanjeTable['playerTromedje'] = $tromedjeIgraca;
 
-        $result = $this->maybeFinishGame($game, $bs);
-        $bs = $result['bs'];
-        $update = ['board_state' => $bs];
+        $result = $this->proveriKrajIgre($game, $stanjeTable);
+        $stanjeTable = $result['bs'];
+        $update = ['board_state' => $stanjeTable];
         if ($result['finished']) {
             $update['status'] = 'finished';
         }
         $game->update($update);
 
-        $this->addResources($game, $currentUserId, ['drvo' => -1, 'cigla' => -1, 'ovca' => -1, 'psenica' => -1]);
+        $this->dodajResurse($game, $idTrenutnogIgraca, ['drvo' => -1, 'cigla' => -1, 'ovca' => -1, 'psenica' => -1]);
 
-        return response()->json($this->present($game->fresh()));
+        return response()->json($this->pripremiOdgovor($game->fresh()));
     }
 
     // POST /api/games/{game}/build-city — unapredjenje sela u grad (2 psenica + 3 kamen)
-    public function buildCity(Request $request, Game $game)
+    public function buildCity(Request $zahtev, Game $game)
     {
-        $this->authorizeAccess($game);
+        $this->proveriPristup($game);
 
-        $data = $request->validate([
+        $podaci = $zahtev->validate([
             'tri_index' => ['required', 'integer', 'min:0', 'max:23'],
         ]);
 
-        $bs = $game->board_state ?? [];
-        abort_unless(($bs['phase'] ?? null) === 'playing', 422, 'Partija nije u toku.');
+        $stanjeTable = $game->board_state ?? [];
+        abort_unless(($stanjeTable['phase'] ?? null) === 'playing', 422, 'Partija nije u toku.');
 
-        $turnOrder = $bs['turnOrder'] ?? [];
-        $playIdx = $bs['playTurnIndex'] ?? 0;
-        $currentUserId = $turnOrder[$playIdx % count($turnOrder)];
-        abort_unless($currentUserId === $request->user()->id, 403, 'Nije tvoj red.');
+        $redosledPoteza = $stanjeTable['turnOrder'] ?? [];
+        $playIdx = $stanjeTable['playTurnIndex'] ?? 0;
+        $idTrenutnogIgraca = $redosledPoteza[$playIdx % count($redosledPoteza)];
+        abort_unless($idTrenutnogIgraca === $zahtev->user()->id, 403, 'Nije tvoj red.');
 
-        $fields = self::TROMEDJE[$data['tri_index']];
-        $playerTromedje = $bs['playerTromedje'] ?? [];
+        $polja = self::TROMEDJE[$podaci['tri_index']];
+        $tromedjeIgraca = $stanjeTable['playerTromedje'] ?? [];
 
-        $foundIndex = null;
-        foreach ($playerTromedje as $i => $t) {
-            if (($t['tri_index'] ?? null) === $data['tri_index']) {
-                $foundIndex = $i;
+        $pronadjeniIndeks = null;
+        foreach ($tromedjeIgraca as $i => $t) {
+            if (($t['tri_index'] ?? null) === $podaci['tri_index']) {
+                $pronadjeniIndeks = $i;
                 break;
             }
         }
-        abort_if(is_null($foundIndex), 422, 'Tu ne postoji tvoje selo.');
-        abort_unless($playerTromedje[$foundIndex]['id'] === $currentUserId, 403, 'To nije tvoje selo.');
-        abort_if(($playerTromedje[$foundIndex]['type'] ?? 'settlement') === 'city', 422, 'Tu je već izgrađen grad.');
+        abort_if(is_null($pronadjeniIndeks), 422, 'Tu ne postoji tvoje selo.');
+        abort_unless($tromedjeIgraca[$pronadjeniIndeks]['id'] === $idTrenutnogIgraca, 403, 'To nije tvoje selo.');
+        abort_if(($tromedjeIgraca[$pronadjeniIndeks]['type'] ?? 'settlement') === 'city', 422, 'Tu je već izgrađen grad.');
 
-        $pivot = DB::table('game_players')->where('game_id', $game->id)->where('user_id', $currentUserId)->first();
-        $resources = $pivot && $pivot->resources ? json_decode($pivot->resources, true) : [];
-        abort_if(($resources['psenica'] ?? 0) < 2 || ($resources['kamen'] ?? 0) < 3, 422, 'Nemaš dovoljno resursa (2 pšenice + 3 kamena).');
+        $pivotPodaci = DB::table('game_players')->where('game_id', $game->id)->where('user_id', $idTrenutnogIgraca)->first();
+        $resursi = $pivotPodaci && $pivotPodaci->resources ? json_decode($pivotPodaci->resources, true) : [];
+        abort_if(($resursi['psenica'] ?? 0) < 2 || ($resursi['kamen'] ?? 0) < 3, 422, 'Nemaš dovoljno resursa (2 pšenice + 3 kamena).');
 
-        $playerTromedje[$foundIndex]['type'] = 'city';
-        $bs['playerTromedje'] = $playerTromedje;
+        $tromedjeIgraca[$pronadjeniIndeks]['type'] = 'city';
+        $stanjeTable['playerTromedje'] = $tromedjeIgraca;
 
-        $result = $this->maybeFinishGame($game, $bs);
-        $bs = $result['bs'];
-        $update = ['board_state' => $bs];
+        $result = $this->proveriKrajIgre($game, $stanjeTable);
+        $stanjeTable = $result['bs'];
+        $update = ['board_state' => $stanjeTable];
         if ($result['finished']) {
             $update['status'] = 'finished';
         }
         $game->update($update);
 
-        $this->addResources($game, $currentUserId, ['psenica' => -2, 'kamen' => -3]);
+        $this->dodajResurse($game, $idTrenutnogIgraca, ['psenica' => -2, 'kamen' => -3]);
 
-        return response()->json($this->present($game->fresh()));
+        return response()->json($this->pripremiOdgovor($game->fresh()));
     }
 
 
 
     // POST /api/games/{game}/end-turn — igrac na potezu zavrsava potez i predaje ga sledecem
-    public function endTurn(Request $request, Game $game)
+    public function endTurn(Request $zahtev, Game $game)
     {
-        $this->authorizeAccess($game);
+        $this->proveriPristup($game);
 
-        $bs = $game->board_state ?? [];
-        abort_unless(($bs['phase'] ?? null) === 'playing', 422, 'Partija nije u toku.');
+        $stanjeTable = $game->board_state ?? [];
+        abort_unless(($stanjeTable['phase'] ?? null) === 'playing', 422, 'Partija nije u toku.');
 
-        $turnOrder = $bs['turnOrder'] ?? [];
-        $playIdx = $bs['playTurnIndex'] ?? 0;
-        $currentUserId = $turnOrder[$playIdx % count($turnOrder)];
-        abort_unless($currentUserId === $request->user()->id, 403, 'Nije tvoj red.');
+        $redosledPoteza = $stanjeTable['turnOrder'] ?? [];
+        $playIdx = $stanjeTable['playTurnIndex'] ?? 0;
+        $idTrenutnogIgraca = $redosledPoteza[$playIdx % count($redosledPoteza)];
+        abort_unless($idTrenutnogIgraca === $zahtev->user()->id, 403, 'Nije tvoj red.');
 
-        $bs['playTurnIndex'] = $playIdx + 1;
-        $bs['hasRolledThisTurn'] = false;
-        $game->update(['board_state' => $bs]);
+        $stanjeTable['playTurnIndex'] = $playIdx + 1;
+        $stanjeTable['hasRolledThisTurn'] = false;
+        $game->update(['board_state' => $stanjeTable]);
 
-        return response()->json($this->present($game->fresh()));
+        return response()->json($this->pripremiOdgovor($game->fresh()));
     }
 
     // POST /api/games/{game}/trade — razmena 4 istog resursa za 1 drugi (banka, 4:1)
-    public function trade(Request $request, Game $game)
+    public function trade(Request $zahtev, Game $game)
     {
-        $this->authorizeAccess($game);
+        $this->proveriPristup($game);
 
-        $data = $request->validate([
+        $podaci = $zahtev->validate([
             'give' => ['required', 'in:drvo,ovca,psenica,cigla,kamen'],
             'get' => ['required', 'in:drvo,ovca,psenica,cigla,kamen'],
         ]);
 
-        abort_if($data['give'] === $data['get'], 422, 'Izaberi različite resurse.');
+        abort_if($podaci['give'] === $podaci['get'], 422, 'Izaberi različite resurse.');
 
-        $bs = $game->board_state ?? [];
-        abort_unless(($bs['phase'] ?? null) === 'playing', 422, 'Partija nije u toku.');
+        $stanjeTable = $game->board_state ?? [];
+        abort_unless(($stanjeTable['phase'] ?? null) === 'playing', 422, 'Partija nije u toku.');
 
-        $turnOrder = $bs['turnOrder'] ?? [];
-        $playIdx = $bs['playTurnIndex'] ?? 0;
-        $currentUserId = $turnOrder[$playIdx % count($turnOrder)];
-        abort_unless($currentUserId === $request->user()->id, 403, 'Nije tvoj red.');
+        $redosledPoteza = $stanjeTable['turnOrder'] ?? [];
+        $playIdx = $stanjeTable['playTurnIndex'] ?? 0;
+        $idTrenutnogIgraca = $redosledPoteza[$playIdx % count($redosledPoteza)];
+        abort_unless($idTrenutnogIgraca === $zahtev->user()->id, 403, 'Nije tvoj red.');
 
-        $pivot = DB::table('game_players')->where('game_id', $game->id)->where('user_id', $currentUserId)->first();
-        $resources = $pivot && $pivot->resources ? json_decode($pivot->resources, true) : [];
-        abort_if(($resources[$data['give']] ?? 0) < 4, 422, 'Nemaš dovoljno resursa za razmenu (potrebno 4).');
+        $pivotPodaci = DB::table('game_players')->where('game_id', $game->id)->where('user_id', $idTrenutnogIgraca)->first();
+        $resursi = $pivotPodaci && $pivotPodaci->resources ? json_decode($pivotPodaci->resources, true) : [];
+        abort_if(($resursi[$podaci['give']] ?? 0) < 4, 422, 'Nemaš dovoljno resursa za razmenu (potrebno 4).');
 
-        $this->addResources($game, $currentUserId, [$data['give'] => -4, $data['get'] => 1]);
+        $this->dodajResurse($game, $idTrenutnogIgraca, [$podaci['give'] => -4, $podaci['get'] => 1]);
 
-        return response()->json($this->present($game->fresh()));
+        return response()->json($this->pripremiOdgovor($game->fresh()));
     }
 
 
     // DELETE /api/games/{game} — brise partiju (vlasnik ili admin)
-    public function destroy(Request $request, Game $game)
+    public function destroy(Request $zahtev, Game $game)
     {
-        if ($game->created_by !== $request->user()->id && ! $request->user()->isAdmin()) {
+        if ($game->created_by !== $zahtev->user()->id && ! $zahtev->user()->isAdmin()) {
             abort(403);
         }
         $game->delete();
         return response()->json(null, 204);
     }
 
-    private function authorizeAccess(Game $game): void
+    private function proveriPristup(Game $game): void
     {
-        $user = Auth::user();
-        if (! $user || (! $user->isAdmin() && ! $game->players->contains($user->id) && $game->created_by !== $user->id)) {
+        $korisnik = Auth::user();
+        if (! $korisnik || (! $korisnik->isAdmin() && ! $game->players->contains($korisnik->id) && $game->created_by !== $korisnik->id)) {
             abort(403, 'Nemate pristup ovoj partiji.');
         }
     }
 
     // Proverava da li je neko dosao do 5 poena; ako jeste, zavrsava partiju i
     // azurira player_stats (odigrane/pobedjene/ukupno_poena) za sve igrace u partiji.
-    private function maybeFinishGame(Game $game, array $bs): array
+    private function proveriKrajIgre(Game $game, array $stanjeTable): array
     {
         if ($game->status === 'finished') {
-            return ['bs' => $bs, 'finished' => false];
+            return ['bs' => $stanjeTable, 'finished' => false];
         }
 
-        $pointsByPlayer = [];
-        foreach (($bs['playerTromedje'] ?? []) as $t) {
-            $pointsByPlayer[$t['id']] = ($pointsByPlayer[$t['id']] ?? 0) + (($t['type'] ?? 'settlement') === 'city' ? 2 : 1);
+        $poeniPoIgracu = [];
+        foreach (($stanjeTable['playerTromedje'] ?? []) as $t) {
+            $poeniPoIgracu[$t['id']] = ($poeniPoIgracu[$t['id']] ?? 0) + (($t['type'] ?? 'settlement') === 'city' ? 2 : 1);
         }
 
-        $winnerId = null;
-        foreach ($pointsByPlayer as $uid => $pts) {
-            if ($pts >= 5) {
-                $winnerId = $uid;
+        $idPobednika = null;
+        foreach ($poeniPoIgracu as $uid => $poeni) {
+            if ($poeni >= 5) {
+                $idPobednika = $uid;
                 break;
             }
         }
 
-        if (! $winnerId) {
-            return ['bs' => $bs, 'finished' => false];
+        if (! $idPobednika) {
+            return ['bs' => $stanjeTable, 'finished' => false];
         }
 
-        $bs['winnerId'] = $winnerId;
+        $stanjeTable['winnerId'] = $idPobednika;
 
-        foreach ($game->players as $user) {
-            $pts = $pointsByPlayer[$user->id] ?? 0;
-            $stat = PlayerStat::firstOrCreate(['user_id' => $user->id]);
-            $stat->increment('odigrane');
-            $stat->increment('ukupno_poena', $pts);
-            if ($user->id === $winnerId) {
-                $stat->increment('pobedjene');
+        foreach ($game->players as $korisnik) {
+            $poeni = $poeniPoIgracu[$korisnik->id] ?? 0;
+            $statistika = PlayerStat::firstOrCreate(['user_id' => $korisnik->id]);
+            $statistika->increment('odigrane');
+            $statistika->increment('ukupno_poena', $poeni);
+            if ($korisnik->id === $idPobednika) {
+                $statistika->increment('pobedjene');
             }
         }
 
-        return ['bs' => $bs, 'finished' => true];
+        return ['bs' => $stanjeTable, 'finished' => true];
     }
 
     // Dodaje (ili oduzima, ako je qty negativan) resurse igracu u game_players pivot tabeli.
-    private function addResources(Game $game, int $userId, array $delta): void
+    private function dodajResurse(Game $game, int $idKorisnika, array $razlika): void
     {
-        $pivot = DB::table('game_players')->where('game_id', $game->id)->where('user_id', $userId)->first();
-        $resources = $pivot && $pivot->resources ? json_decode($pivot->resources, true) : [];
-        foreach ($delta as $res => $qty) {
-            $resources[$res] = max(0, ($resources[$res] ?? 0) + $qty);
+        $pivotPodaci = DB::table('game_players')->where('game_id', $game->id)->where('user_id', $idKorisnika)->first();
+        $resursi = $pivotPodaci && $pivotPodaci->resources ? json_decode($pivotPodaci->resources, true) : [];
+        foreach ($razlika as $res => $kolicina) {
+            $resursi[$res] = max(0, ($resursi[$res] ?? 0) + $kolicina);
         }
-        $game->players()->updateExistingPivot($userId, ['resources' => json_encode($resources)]);
+        $game->players()->updateExistingPivot($idKorisnika, ['resources' => json_encode($resursi)]);
     }
 
     // Standardizovan JSON odgovor: partija + igraci sa dekodiranim resursima.
-    private function present(Game $game): array
+    private function pripremiOdgovor(Game $game): array
     {
         $game->load('players');
 

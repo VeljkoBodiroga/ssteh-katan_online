@@ -1,31 +1,31 @@
 // Port of src/Stranice/Igraj.tsx (React) na vanilla JS + Laravel API pozive.
 // DVA REZIMA:
-//  - MULTIPLAYER (cfg.gameId je postavljen, dosli smo iz lobija): server je izvor istine,
+//  - VISE_IGRACA (podesavanja.gameId je postavljen, dosli smo iz lobija): server je izvor istine,
 //    svaki browser POLL-uje /api/games/{id} na ~1s i renderuje ono sto server kaze. Samo
 //    igrac na potezu (po pravoj ulogovanoj sesiji) moze da bira teren / baci kocku / gradi.
 //  - HOTSEAT (direktan pristup /igraj bez lobija): sve se odigrava lokalno u jednom browseru,
 //    korisno za brzo testiranje bez potrebe za dva naloga (bez sistema puteva).
 (function () {
-  const cfg = window.CATAN_CONFIG;
-  const MULTIPLAYER = !!cfg.gameId;
+  const podesavanja = window.CATAN_CONFIG;
+  const VISE_IGRACA = !!podesavanja.gameId;
 
-  const hexLayout = [3, 4, 5, 4, 3];
-  const resourceLimits = { pustinja: 1, drvo: 4, ovca: 4, psenica: 4, cigla: 3, kamen: 3 };
-  const resourceEmojis = { pustinja: "🏜", drvo: "🌲", ovca: "🐑", psenica: "🌾", cigla: "🧱", kamen: "🪨" };
-  const resourceImages = {
-    pustinja: `${cfg.imagesBase}/pustinja.png`,
-    drvo: `${cfg.imagesBase}/drvo.png`,
-    ovca: `${cfg.imagesBase}/ovca.png`,
-    psenica: `${cfg.imagesBase}/psenica.png`,
-    cigla: `${cfg.imagesBase}/cigla.png`,
-    kamen: `${cfg.imagesBase}/kamen.png`,
+  const rasporedRedova = [3, 4, 5, 4, 3];
+  const maksResursa = { pustinja: 1, drvo: 4, ovca: 4, psenica: 4, cigla: 3, kamen: 3 };
+  const emojiResursa = { pustinja: "🏜", drvo: "🌲", ovca: "🐑", psenica: "🌾", cigla: "🧱", kamen: "🪨" };
+  const slikeResursa = {
+    pustinja: `${podesavanja.imagesBase}/pustinja.png`,
+    drvo: `${podesavanja.imagesBase}/drvo.png`,
+    ovca: `${podesavanja.imagesBase}/ovca.png`,
+    psenica: `${podesavanja.imagesBase}/psenica.png`,
+    cigla: `${podesavanja.imagesBase}/cigla.png`,
+    kamen: `${podesavanja.imagesBase}/kamen.png`,
   };
 
-  const numberTokens = [5, 2, 6, 3, 8, 10, 9, 12, 11, 4, 8, 10, 9, 4, 5, 6, 3, 11];
-  const outerRing = [0, 1, 2, 6, 11, 15, 18, 17, 16, 12, 7, 3];
-  const innerRing = [4, 5, 10, 14, 13, 8];
+  const zetoniBrojeva = [5, 2, 6, 3, 8, 10, 9, 12, 11, 4, 8, 10, 9, 4, 5, 6, 3, 11];
+  const spoljniPrsten = [0, 1, 2, 6, 11, 15, 18, 17, 16, 12, 7, 3];
+  const unutrasnjiPrsten = [4, 5, 10, 14, 13, 8];
   const center = 9;
-  const cornerIndices = [0, 2, 11, 18, 16, 7];
+  const indeksiUglova = [0, 2, 11, 18, 16, 7];
 
   // Master lista svih 24 tromedje (mesta za naselje) - MORA biti identicna serverskoj listi.
   const tromedje = [
@@ -43,16 +43,16 @@
 
   // Master lista svih 30 moguca "puta" (ivica izmedju dva susedna temena) - MORA biti
   // identicna serverskoj listi u GameApiController.php.
-  const edges = [
+  const ivice = [
     [0, 3], [0, 4], [1, 2], [1, 4], [2, 9], [3, 5], [4, 7], [5, 6], [5, 8], [6, 12],
     [7, 8], [7, 10], [8, 14], [9, 10], [9, 11], [10, 16], [11, 18], [12, 13], [13, 14], [13, 19],
     [14, 15], [15, 16], [15, 21], [16, 17], [17, 18], [17, 23], [19, 20], [20, 21], [21, 22], [22, 23],
   ];
 
-  let state = {
-    phase: MULTIPLAYER ? "waiting-setup" : "tiles",
+  let stanje = {
+    phase: VISE_IGRACA ? "waiting-setup" : "tiles",
     tiles: Array(19).fill(null),
-    counts: Object.fromEntries(Object.keys(resourceLimits).map((r) => [r, 0])),
+    counts: Object.fromEntries(Object.keys(maksResursa).map((r) => [r, 0])),
     numbers: Array(19).fill(null),
     rolled: null,
     isCreator: false,
@@ -69,8 +69,8 @@
     cityBuildMode: false,
     roads: [],
     players:
-      cfg.players && cfg.players.length > 0
-        ? cfg.players.map((p) => ({ id: p.id, name: p.name, resources: { drvo: 0, ovca: 0, psenica: 0, cigla: 0, kamen: 0 } }))
+      podesavanja.players && podesavanja.players.length > 0
+        ? podesavanja.players.map((p) => ({ id: p.id, name: p.name, resources: { drvo: 0, ovca: 0, psenica: 0, cigla: 0, kamen: 0 } }))
         : [
             { id: 1, name: "Igrač 1", resources: { drvo: 0, ovca: 0, psenica: 0, cigla: 0, kamen: 0 } },
             { id: 2, name: "Igrač 2", resources: { drvo: 0, ovca: 0, psenica: 0, cigla: 0, kamen: 0 } },
@@ -79,19 +79,19 @@
     playerTromedje: [],
     currentPickIndex: 0, // hotseat picking
     currentTurnIndex: 0, // hotseat playing
-    gameId: cfg.gameId || null,
+    gameId: podesavanja.gameId || null,
   };
 
-  function rollOneDie() {
+  function baciJednuKocku() {
     return Math.floor(Math.random() * 6) + 1;
   }
 
-  async function apiFetch(path, options = {}) {
-    const res = await fetch(`${cfg.apiBase}${path}`, {
+  async function pozoviApi(path, options = {}) {
+    const res = await fetch(`${podesavanja.apiBase}${path}`, {
       ...options,
       headers: {
         "Content-Type": "application/json",
-        "X-CSRF-TOKEN": cfg.csrfToken,
+        "X-CSRF-TOKEN": podesavanja.csrfToken,
         Accept: "application/json",
         ...(options.headers || {}),
       },
@@ -103,24 +103,24 @@
     return res.json();
   }
 
-  function playerName(id) {
-    const p = state.players.find((pl) => pl.id === id);
+  function imeIgraca(id) {
+    const p = stanje.players.find((pl) => pl.id === id);
     return p ? p.name : `Igrač ${id}`;
   }
 
-  const PLAYER_COLORS = ["#3498db", "#e74c3c", "#2ecc71", "#f39c12"];
-  function colorForPlayer(playerId) {
-    const idx = state.players.findIndex((p) => p.id === playerId);
-    return PLAYER_COLORS[idx >= 0 ? idx % PLAYER_COLORS.length : 0];
+  const BOJE_IGRACA = ["#3498db", "#e74c3c", "#2ecc71", "#f39c12"];
+  function bojaIgraca(playerId) {
+    const idx = stanje.players.findIndex((p) => p.id === playerId);
+    return BOJE_IGRACA[idx >= 0 ? idx % BOJE_IGRACA.length : 0];
   }
 
   // ---------- Zajednicki prikaz table ----------
-  function renderBoard() {
+  function iscrtajTablu() {
     const boardEl = document.getElementById("board");
     boardEl.innerHTML = "";
     let counter = 0;
 
-    hexLayout.forEach((count) => {
+    rasporedRedova.forEach((count) => {
       const row = document.createElement("div");
       row.className = "row";
       for (let i = 0; i < count; i++) {
@@ -129,24 +129,24 @@
         hex.className = "hex";
         hex.dataset.idx = idx;
 
-        if (state.tiles[idx]) {
+        if (stanje.tiles[idx]) {
           const img = document.createElement("img");
-          img.src = resourceImages[state.tiles[idx]];
-          img.alt = state.tiles[idx];
+          img.src = slikeResursa[stanje.tiles[idx]];
+          img.alt = stanje.tiles[idx];
           hex.appendChild(img);
-          if (state.numbers[idx]) {
+          if (stanje.numbers[idx]) {
             const numDiv = document.createElement("div");
             numDiv.className = "number";
-            numDiv.textContent = state.numbers[idx];
+            numDiv.textContent = stanje.numbers[idx];
             hex.appendChild(numDiv);
           }
-        } else if (!MULTIPLAYER || state.isCreator) {
+        } else if (!VISE_IGRACA || stanje.isCreator) {
           const grid = document.createElement("div");
           grid.className = "options-grid";
-          Object.keys(resourceLimits).forEach((res) => {
+          Object.keys(maksResursa).forEach((res) => {
             const btn = document.createElement("button");
-            btn.textContent = resourceEmojis[res];
-            btn.onclick = () => handleSelect(idx, res);
+            btn.textContent = emojiResursa[res];
+            btn.onclick = () => obradiIzborResursa(idx, res);
             grid.appendChild(btn);
           });
           hex.appendChild(grid);
@@ -157,17 +157,17 @@
       boardEl.appendChild(row);
     });
 
-    renderSettlementMarkers();
-    renderRoadMarkers();
-    renderSettlementSlots();
+    iscrtajOznakeSela();
+    iscrtajOznakePuteva();
+    iscrtajMestaZaSelo();
   }
 
   // Tacna pozicija temena (vertex) = prosek centara tri polja koja dodiruje,
   // izracunato iz STVARNIH pozicija na ekranu (getBoundingClientRect), relativno na #board.
-  function getVertexPixelPosition(triIdx) {
+  function pozicijaTemena(indeksTemena) {
     const boardEl = document.getElementById("board");
     const boardRect = boardEl.getBoundingClientRect();
-    const fields = tromedje[triIdx];
+    const fields = tromedje[indeksTemena];
     const rects = fields
       .map((idx) => boardEl.querySelector(`[data-idx="${idx}"]`))
       .filter(Boolean)
@@ -178,107 +178,107 @@
     return { x, y };
   }
 
-  function renderSettlementMarkers() {
+  function iscrtajOznakeSela() {
     const boardEl = document.getElementById("board");
-    state.playerTromedje.forEach((t) => {
-      const triIdx = t.tri_index !== undefined ? t.tri_index : tromedje.findIndex((f) => f.length === t.fields.length && f.every((v, i) => v === t.fields[i]));
-      const pos = triIdx >= 0 ? getVertexPixelPosition(triIdx) : null;
+    stanje.playerTromedje.forEach((t) => {
+      const indeksTemena = t.tri_index !== undefined ? t.tri_index : tromedje.findIndex((f) => f.length === t.fields.length && f.every((v, i) => v === t.fields[i]));
+      const pos = indeksTemena >= 0 ? pozicijaTemena(indeksTemena) : null;
       if (!pos) return;
 
       const isCity = t.type === "city";
-      const upgradeable = state.cityBuildMode && t.id === cfg.currentUserId && !isCity;
+      const upgradeable = stanje.cityBuildMode && t.id === podesavanja.currentUserId && !isCity;
 
       const marker = document.createElement("div");
       marker.className = "settlement-marker" + (upgradeable ? " settlement-upgradeable" : "");
       marker.style.left = `${pos.x}px`;
       marker.style.top = `${pos.y}px`;
-      marker.style.background = colorForPlayer(t.id);
-      marker.title = playerName(t.id) + (isCity ? " (grad)" : "");
+      marker.style.background = bojaIgraca(t.id);
+      marker.title = imeIgraca(t.id) + (isCity ? " (grad)" : "");
       marker.textContent = isCity ? "🏛️" : "🏠";
       if (upgradeable) {
         marker.style.pointerEvents = "auto";
         marker.style.cursor = "pointer";
-        marker.onclick = () => buildCityMultiplayer(triIdx);
+        marker.onclick = () => izgradiGradVisestruko(indeksTemena);
       }
       boardEl.appendChild(marker);
     });
   }
 
-    function renderRoadMarkers() {
+    function iscrtajOznakePuteva() {
     const boardEl = document.getElementById("board");
 
-    state.roads.forEach((r) => {
-      drawRoadBar(edges[r.edge_index], colorForPlayer(r.id), false, null);
+    stanje.roads.forEach((r) => {
+      nacrtajPut(ivice[r.edge_index], bojaIgraca(r.id), false, null);
     });
 
-    if (state.roadBuildMode) {
-      availableRoadEdges().forEach(({ idx, e }) => {
-        drawRoadBar(e, "rgba(255,255,255,0.85)", true, () => buildRoadMultiplayer(idx));
+    if (stanje.roadBuildMode) {
+      dostupniPutevi().forEach(({ idx, e }) => {
+        nacrtajPut(e, "rgba(255,255,255,0.85)", true, () => sagradiPutVisestruko(idx));
       });
     }
 
-    if (state.phase === "picking" && state.pickSubPhase === "road") {
-      const currentUserId = state.turnOrder[state.pickTurnIndex % state.turnOrder.length];
-      if (currentUserId === cfg.currentUserId) {
-        availablePickRoadEdges().forEach(({ idx, e }) => {
-          drawRoadBar(e, "rgba(255,255,255,0.85)", true, () => pickRoadMultiplayer(idx));
+    if (stanje.phase === "picking" && stanje.pickSubPhase === "road") {
+      const currentUserId = stanje.turnOrder[stanje.pickTurnIndex % stanje.turnOrder.length];
+      if (currentUserId === podesavanja.currentUserId) {
+        dostupniPuteviZaBiranje().forEach(({ idx, e }) => {
+          nacrtajPut(e, "rgba(255,255,255,0.85)", true, () => izaberiPutVisestruko(idx));
         });
       }
     }
   }
 
-  function availablePickRoadEdges() {
-    const builtSet = new Set(state.roads.map((r) => r.edge_index));
-    return edges
+  function dostupniPuteviZaBiranje() {
+    const builtSet = new Set(stanje.roads.map((r) => r.edge_index));
+    return ivice
       .map((e, idx) => ({ idx, e }))
-      .filter(({ idx, e }) => !builtSet.has(idx) && e.includes(state.pendingRoadVertex));
+      .filter(({ idx, e }) => !builtSet.has(idx) && e.includes(stanje.pendingRoadVertex));
   }
 
-  async function pickRoadMultiplayer(edgeIdx) {
+  async function izaberiPutVisestruko(indeksIvice) {
     try {
-      const game = await apiFetch(`/games/${state.gameId}/pick-road`, {
+      const game = await pozoviApi(`/games/${stanje.gameId}/pick-road`, {
         method: "POST",
-        body: JSON.stringify({ edge_index: edgeIdx }),
+        body: JSON.stringify({ edge_index: indeksIvice }),
       });
-      applyServerState(game);
+      primeniStanjeSaServera(game);
     } catch (e) {
       alert("Greška: " + e.message);
     }
   }
 
-  function availableSettlementSpots() {
-    const myId = cfg.currentUserId;
+  function dostupnaMestaZaSelo() {
+    const myId = podesavanja.currentUserId;
     const myRoadVertIndices = new Set(
-      state.roads.filter((r) => r.id === myId).flatMap((r) => edges[r.edge_index])
+      stanje.roads.filter((r) => r.id === myId).flatMap((r) => ivice[r.edge_index])
     );
     return tromedje
       .map((fields, idx) => ({ idx, fields }))
       .filter(({ idx, fields }) => {
         if (!myRoadVertIndices.has(idx)) return false;
-        return !state.playerTromedje.some((t) => shareEdge(fields, t.fields));
+        return !stanje.playerTromedje.some((t) => deliZajednickuIvicu(fields, t.fields));
       });
   }
 
-  function renderSettlementSlots() {
-    if (!state.settlementBuildMode) return;
+  function iscrtajMestaZaSelo() {
+    if (!stanje.settlementBuildMode) return;
     const boardEl = document.getElementById("board");
-    availableSettlementSpots().forEach(({ idx }) => {
-      const pos = getVertexPixelPosition(idx);
+    dostupnaMestaZaSelo().forEach(({ idx }) => {
+      const pos = pozicijaTemena(idx);
       if (!pos) return;
       const slot = document.createElement("div");
       slot.className = "settlement-slot";
       slot.style.left = `${pos.x}px`;
       slot.style.top = `${pos.y}px`;
-      slot.onclick = () => buildSettlementMultiplayer(idx);
+      slot.onclick = () => sagradiSeloVisestruko(idx);
       boardEl.appendChild(slot);
     });
   }
 
-  function drawRoadBar(edgeVertices, color, clickable, onClick) {
+  function nacrtajPut(edgeVertices, color, clickable, onClick) {
     const boardEl = document.getElementById("board");
     const [triA, triB] = edgeVertices;
-    const posA = getVertexPixelPosition(triA);
-    const posB = getVertexPixelPosition(triB);
+    const posA = pozicijaTemena(triA);
+    const posB = pozicijaTemena(triB);
     if (!posA || !posB) return;
 
     const midX = (posA.x + posB.x) / 2;
@@ -298,55 +298,55 @@
     boardEl.appendChild(bar);
   }
 
-  function handleSelect(idx, res) {
-    if (MULTIPLAYER && !state.isCreator) return;
-    if (state.tiles[idx]) return;
-    if (state.counts[res] >= resourceLimits[res]) {
+  function obradiIzborResursa(idx, res) {
+    if (VISE_IGRACA && !stanje.isCreator) return;
+    if (stanje.tiles[idx]) return;
+    if (stanje.counts[res] >= maksResursa[res]) {
       alert(`Nema više ${res}`);
       return;
     }
-    state.tiles[idx] = res;
-    state.counts[res] += 1;
-    renderBoard();
+    stanje.tiles[idx] = res;
+    stanje.counts[res] += 1;
+    iscrtajTablu();
   }
 
-  function rollDiceAndAssign() {
-    if (state.tiles.includes(null)) return alert("Popuni sva polja!");
-    const dice = rollOneDie();
-    state.rolled = dice;
+  function baciKockuIDodeliBrojeve() {
+    if (stanje.tiles.includes(null)) return alert("Popuni sva polja!");
+    const dice = baciJednuKocku();
+    stanje.rolled = dice;
     document.getElementById("setup-roll-result").textContent = `Pao broj: ${dice}`;
 
-    const startCorner = cornerIndices[dice - 1];
-    const startOuterIdx = outerRing.indexOf(startCorner);
-    const rotatedOuter = outerRing.slice(startOuterIdx).concat(outerRing.slice(0, startOuterIdx));
+    const pocetniUgao = indeksiUglova[dice - 1];
+    const pocetniIndeksSpoljnog = spoljniPrsten.indexOf(pocetniUgao);
+    const rotiraniSpoljniPrsten = spoljniPrsten.slice(pocetniIndeksSpoljnog).concat(spoljniPrsten.slice(0, pocetniIndeksSpoljnog));
 
-    let numIndex = 0;
-    const newNumbers = Array(19).fill(null);
-    rotatedOuter.forEach((idx) => {
-      if (state.tiles[idx] !== "pustinja") newNumbers[idx] = numberTokens[numIndex++];
+    let indeksBroja = 0;
+    const noviBrojevi = Array(19).fill(null);
+    rotiraniSpoljniPrsten.forEach((idx) => {
+      if (stanje.tiles[idx] !== "pustinja") noviBrojevi[idx] = zetoniBrojeva[indeksBroja++];
     });
 
-    const rotatedInner = innerRing.concat(innerRing).slice(dice % 6, (dice % 6) + 6);
-    rotatedInner.forEach((idx) => {
-      if (state.tiles[idx] !== "pustinja") newNumbers[idx] = numberTokens[numIndex++];
+    const rotiraniUnutrasnjiPrsten = unutrasnjiPrsten.concat(unutrasnjiPrsten).slice(dice % 6, (dice % 6) + 6);
+    rotiraniUnutrasnjiPrsten.forEach((idx) => {
+      if (stanje.tiles[idx] !== "pustinja") noviBrojevi[idx] = zetoniBrojeva[indeksBroja++];
     });
-    if (state.tiles[center] !== "pustinja") newNumbers[center] = numberTokens[numIndex++];
+    if (stanje.tiles[center] !== "pustinja") noviBrojevi[center] = zetoniBrojeva[indeksBroja++];
 
-    state.numbers = newNumbers;
-    renderBoard();
+    stanje.numbers = noviBrojevi;
+    iscrtajTablu();
 
-    if (MULTIPLAYER) {
+    if (VISE_IGRACA) {
       document.getElementById("btn-submit-board").style.display = "inline-block";
     } else {
-      enterPickingPhaseHotseat();
+      udjiUFazuBiranjaLokalno();
     }
   }
 
-  async function submitBoard() {
+  async function posaljiTablu() {
     try {
-      await apiFetch(`/games/${state.gameId}/setup-board`, {
+      await pozoviApi(`/games/${stanje.gameId}/setup-board`, {
         method: "POST",
-        body: JSON.stringify({ tiles: state.tiles, numbers: state.numbers }),
+        body: JSON.stringify({ tiles: stanje.tiles, numbers: stanje.numbers }),
       });
       document.getElementById("setup-controls").style.display = "none";
     } catch (e) {
@@ -354,107 +354,107 @@
     }
   }
 
-  function shareEdge(fieldsA, fieldsB) {
+  function deliZajednickuIvicu(fieldsA, fieldsB) {
     const common = fieldsA.filter((f) => fieldsB.includes(f));
     return common.length >= 2;
   }
 
-  function availableTromedje() {
+  function dostupneTromedje() {
     return tromedje
       .map((fields, idx) => ({ idx, fields }))
-      .filter(({ fields }) => !state.playerTromedje.some((t) => shareEdge(fields, t.fields)));
+      .filter(({ fields }) => !stanje.playerTromedje.some((t) => deliZajednickuIvicu(fields, t.fields)));
   }
 
   // Isti algoritam kao na serveru: koje ivice smem da gradim (nadovezuju se na moje
   // selo ili moj postojeci put, a ne prolaze kroz tudje selo).
-    function availableRoadEdges() {
-    const myId = cfg.currentUserId;
-    const mySettlementVertIndices = new Set(state.playerTromedje.filter((t) => t.id === myId).map((t) => t.tri_index));
-    const enemySettlementVertIndices = new Set(state.playerTromedje.filter((t) => t.id !== myId).map((t) => t.tri_index));
-    const builtSet = new Set(state.roads.map((r) => r.edge_index));
+    function dostupniPutevi() {
+    const myId = podesavanja.currentUserId;
+    const mySettlementVertIndices = new Set(stanje.playerTromedje.filter((t) => t.id === myId).map((t) => t.tri_index));
+    const enemySettlementVertIndices = new Set(stanje.playerTromedje.filter((t) => t.id !== myId).map((t) => t.tri_index));
+    const builtSet = new Set(stanje.roads.map((r) => r.edge_index));
 
     // Vertex indeksi (tromedje indeksi) na krajevima mojih vec izgradjenih puteva.
     const myRoadVertIndices = new Set(
-      state.roads.filter((r) => r.id === myId).flatMap((r) => edges[r.edge_index])
+      stanje.roads.filter((r) => r.id === myId).flatMap((r) => ivice[r.edge_index])
     );
 
-    return edges
+    return ivice
       .map((e, idx) => ({ idx, e }))
       .filter(({ idx, e }) => {
         if (builtSet.has(idx)) return false;
-        return e.some((triIdx) => {
-          const isMySettlement = mySettlementVertIndices.has(triIdx);
-          const isEnemySettlement = enemySettlementVertIndices.has(triIdx);
-          const isMyRoadEnd = myRoadVertIndices.has(triIdx) && !isEnemySettlement;
+        return e.some((indeksTemena) => {
+          const isMySettlement = mySettlementVertIndices.has(indeksTemena);
+          const isEnemySettlement = enemySettlementVertIndices.has(indeksTemena);
+          const isMyRoadEnd = myRoadVertIndices.has(indeksTemena) && !isEnemySettlement;
           return isMySettlement || isMyRoadEnd;
         });
       });
   }
 
-  function describeTromedja(fields) {
+  function opisiTromedju(fields) {
     return fields
       .map((idx) => {
-        const res = state.tiles[idx];
-        const num = state.numbers[idx];
-        const emoji = resourceEmojis[res] || "?";
+        const res = stanje.tiles[idx];
+        const num = stanje.numbers[idx];
+        const emoji = emojiResursa[res] || "?";
         return num ? `${emoji}${num}` : `${emoji}`;
       })
       .join(" · ");
   }
 
-  // ---------- MULTIPLAYER: picking ----------
-    function renderPickingMultiplayer() {
+  // ---------- VISE_IGRACA: picking ----------
+    function iscrtajBiranjeVisestruko() {
     const turnInfo = document.getElementById("turn-indicator");
     const listEl = document.getElementById("tromedje-list");
-    const totalPicks = state.turnOrder.length * 2;
-    const currentUserId = state.turnOrder[state.pickTurnIndex % state.turnOrder.length];
-    const myTurn = currentUserId === cfg.currentUserId;
+    const totalPicks = stanje.turnOrder.length * 2;
+    const currentUserId = stanje.turnOrder[stanje.pickTurnIndex % stanje.turnOrder.length];
+    const mojPotez = currentUserId === podesavanja.currentUserId;
 
-    if (state.pickSubPhase === "road") {
-      turnInfo.textContent = myTurn
-        ? `🎯 Sad izgradi (besplatan) put tačno pored svog novog sela (${state.pickTurnIndex + 1}/${totalPicks})`
-        : `⏳ Na potezu: ${playerName(currentUserId)} gradi put (${state.pickTurnIndex + 1}/${totalPicks}) — čekaj svoj red...`;
+    if (stanje.pickSubPhase === "road") {
+      turnInfo.textContent = mojPotez
+        ? `🎯 Sad izgradi (besplatan) put tačno pored svog novog sela (${stanje.pickTurnIndex + 1}/${totalPicks})`
+        : `⏳ Na potezu: ${imeIgraca(currentUserId)} gradi put (${stanje.pickTurnIndex + 1}/${totalPicks}) — čekaj svoj red...`;
       listEl.innerHTML = "";
       return;
     }
 
-    turnInfo.textContent = myTurn
-      ? `🎯 Na tebi je red da izabereš teren (${state.pickTurnIndex + 1}/${totalPicks})`
-      : `⏳ Na potezu: ${playerName(currentUserId)} (${state.pickTurnIndex + 1}/${totalPicks}) — čekaj svoj red...`;
+    turnInfo.textContent = mojPotez
+      ? `🎯 Na tebi je red da izabereš teren (${stanje.pickTurnIndex + 1}/${totalPicks})`
+      : `⏳ Na potezu: ${imeIgraca(currentUserId)} (${stanje.pickTurnIndex + 1}/${totalPicks}) — čekaj svoj red...`;
 
     listEl.innerHTML = "";
-    availableTromedje().forEach(({ idx, fields }) => {
+    dostupneTromedje().forEach(({ idx, fields }) => {
       const li = document.createElement("li");
       const btn = document.createElement("button");
-      btn.textContent = `Teren #${idx + 1}: ${describeTromedja(fields)}`;
-      btn.disabled = !myTurn;
-      btn.onclick = () => pickTromedjaMultiplayer(idx);
+      btn.textContent = `Teren #${idx + 1}: ${opisiTromedju(fields)}`;
+      btn.disabled = !mojPotez;
+      btn.onclick = () => izaberiTromedjuVisestruko(idx);
       li.appendChild(btn);
       listEl.appendChild(li);
     });
   }
 
-  async function pickTromedjaMultiplayer(triIdx) {
+  async function izaberiTromedjuVisestruko(indeksTemena) {
     try {
-      const game = await apiFetch(`/games/${state.gameId}/pick`, {
+      const game = await pozoviApi(`/games/${stanje.gameId}/pick`, {
         method: "POST",
-        body: JSON.stringify({ tri_index: triIdx }),
+        body: JSON.stringify({ tri_index: indeksTemena }),
       });
-      applyServerState(game);
+      primeniStanjeSaServera(game);
     } catch (e) {
       alert("Greška: " + e.message);
     }
   }
 
-    // ---------- MULTIPLAYER: igranje (kocka -> (gradnja) -> Dalje) ----------
-  function renderPlayingMultiplayer() {
-    const currentUserId = state.turnOrder[state.playTurnIndex % state.turnOrder.length];
-    const myTurn = currentUserId === cfg.currentUserId;
+    // ---------- VISE_IGRACA: igranje (kocka -> (gradnja) -> Dalje) ----------
+  function iscrtajIgranjeVisestruko() {
+    const currentUserId = stanje.turnOrder[stanje.playTurnIndex % stanje.turnOrder.length];
+    const mojPotez = currentUserId === podesavanja.currentUserId;
     const turnEl = document.getElementById("turn-indicator-playing");
-    const pendingIds = Object.keys(state.mustDiscard || {});
+    const idOnihKojiCekaju = Object.keys(stanje.mustDiscard || {});
 
-    if (pendingIds.length > 0) {
-      const names = pendingIds.map((id) => playerName(Number(id))).join(", ");
+    if (idOnihKojiCekaju.length > 0) {
+      const names = idOnihKojiCekaju.map((id) => imeIgraca(Number(id))).join(", ");
       turnEl.textContent = `⚠️ Pao je 7! Čeka se odbacivanje karata: ${names}`;
       document.getElementById("dice-icon").style.display = "none";
       document.getElementById("btn-next-turn").style.display = "none";
@@ -463,43 +463,43 @@
       document.getElementById("btn-build-city").style.display = "none";
       document.getElementById("btn-trade-resources").style.display = "none";
       document.getElementById("trade-panel").style.display = "none";
-      renderDiscardPanel();
+      iscrtajPanelOdbacivanja();
       return;
     }
 
     document.getElementById("discard-panel").style.display = "none";
 
-    if (!myTurn) {
-      turnEl.textContent = `⏳ Na potezu: ${playerName(currentUserId)} — čeka se...`;
-    } else if (!state.hasRolledThisTurn) {
+    if (!mojPotez) {
+      turnEl.textContent = `⏳ Na potezu: ${imeIgraca(currentUserId)} — čeka se...`;
+    } else if (!stanje.hasRolledThisTurn) {
       turnEl.textContent = "🎯 Ti si na potezu — baci kockicu!";
     } else {
       turnEl.textContent = "🎯 Ti si na potezu";
     }
 
-    document.getElementById("dice-icon").style.display = myTurn && !state.hasRolledThisTurn ? "block" : "none";
-    document.getElementById("btn-next-turn").style.display = myTurn && state.hasRolledThisTurn ? "inline-block" : "none";
-    document.getElementById("btn-build-road").style.display = myTurn && state.hasRolledThisTurn ? "inline-block" : "none";
-    document.getElementById("btn-build-settlement").style.display = myTurn && state.hasRolledThisTurn ? "inline-block" : "none";
-    document.getElementById("btn-build-city").style.display = myTurn && state.hasRolledThisTurn ? "inline-block" : "none";
-    document.getElementById("btn-trade-resources").style.display = myTurn && state.hasRolledThisTurn ? "inline-block" : "none";
+    document.getElementById("dice-icon").style.display = mojPotez && !stanje.hasRolledThisTurn ? "block" : "none";
+    document.getElementById("btn-next-turn").style.display = mojPotez && stanje.hasRolledThisTurn ? "inline-block" : "none";
+    document.getElementById("btn-build-road").style.display = mojPotez && stanje.hasRolledThisTurn ? "inline-block" : "none";
+    document.getElementById("btn-build-settlement").style.display = mojPotez && stanje.hasRolledThisTurn ? "inline-block" : "none";
+    document.getElementById("btn-build-city").style.display = mojPotez && stanje.hasRolledThisTurn ? "inline-block" : "none";
+    document.getElementById("btn-trade-resources").style.display = mojPotez && stanje.hasRolledThisTurn ? "inline-block" : "none";
 
-    if (!myTurn || !state.hasRolledThisTurn) {
-      state.roadBuildMode = false;
-      state.settlementBuildMode = false;
-      state.cityBuildMode = false;
+    if (!mojPotez || !stanje.hasRolledThisTurn) {
+      stanje.roadBuildMode = false;
+      stanje.settlementBuildMode = false;
+      stanje.cityBuildMode = false;
       document.getElementById("trade-panel").style.display = "none";
     }
   }
 
-  function renderDiscardPanel() {
+  function iscrtajPanelOdbacivanja() {
     const panel = document.getElementById("discard-panel");
-    const myRequired = state.mustDiscard[cfg.currentUserId];
+    const myRequired = stanje.mustDiscard[podesavanja.currentUserId];
     if (myRequired === undefined) {
       panel.style.display = "none";
       return;
     }
-    const me = state.players.find((p) => p.id === cfg.currentUserId);
+    const me = stanje.players.find((p) => p.id === podesavanja.currentUserId);
     panel.style.display = "flex";
     document.getElementById("discard-info").textContent = `Moraš odbaciti ${myRequired} karata:`;
     ["drvo", "ovca", "psenica", "cigla", "kamen"].forEach((res) => {
@@ -510,105 +510,105 @@
     });
   }
 
-  async function confirmDiscard() {
+  async function potvrdiOdbacivanje() {
     const resources = {};
     ["drvo", "ovca", "psenica", "cigla", "kamen"].forEach((res) => {
       resources[res] = Number(document.getElementById(`discard-${res}`).value) || 0;
     });
     try {
-      const game = await apiFetch(`/games/${state.gameId}/discard`, {
+      const game = await pozoviApi(`/games/${stanje.gameId}/discard`, {
         method: "POST",
         body: JSON.stringify({ resources }),
       });
-      applyServerState(game);
+      primeniStanjeSaServera(game);
     } catch (e) {
       alert("Greška: " + e.message);
     }
   }
 
-  async function rollGameDiceMultiplayer() {
-    const diceIcon = document.getElementById("dice-icon");
-    diceIcon.classList.add("dice-shake");
-    setTimeout(() => diceIcon.classList.remove("dice-shake"), 500);
+  async function baciKockuVisestruko() {
+    const ikonicaKocke = document.getElementById("dice-icon");
+    ikonicaKocke.classList.add("dice-shake");
+    setTimeout(() => ikonicaKocke.classList.remove("dice-shake"), 500);
 
     try {
-      const game = await apiFetch(`/games/${state.gameId}/roll`, { method: "POST" });
-      applyServerState(game);
+      const game = await pozoviApi(`/games/${stanje.gameId}/roll`, { method: "POST" });
+      primeniStanjeSaServera(game);
     } catch (e) {
       alert("Greška: " + e.message);
     }
   }
 
-  function toggleRoadBuildMode() {
-    state.roadBuildMode = !state.roadBuildMode;
-    renderBoard();
+  function prebaciRezimGradnjePuta() {
+    stanje.roadBuildMode = !stanje.roadBuildMode;
+    iscrtajTablu();
   }
 
-  async function buildRoadMultiplayer(edgeIdx) {
+  async function sagradiPutVisestruko(indeksIvice) {
     try {
-      const game = await apiFetch(`/games/${state.gameId}/build-road`, {
+      const game = await pozoviApi(`/games/${stanje.gameId}/build-road`, {
         method: "POST",
-        body: JSON.stringify({ edge_index: edgeIdx }),
+        body: JSON.stringify({ edge_index: indeksIvice }),
       });
-      state.roadBuildMode = false;
-      applyServerState(game);
+      stanje.roadBuildMode = false;
+      primeniStanjeSaServera(game);
     } catch (e) {
       alert("Greška: " + e.message);
     }
   }
 
-  function toggleSettlementBuildMode() {
-    state.settlementBuildMode = !state.settlementBuildMode;
-    renderBoard();
+  function prebaciRezimGradnjeSela() {
+    stanje.settlementBuildMode = !stanje.settlementBuildMode;
+    iscrtajTablu();
   }
 
-  async function buildSettlementMultiplayer(triIdx) {
+  async function sagradiSeloVisestruko(indeksTemena) {
     try {
-      const game = await apiFetch(`/games/${state.gameId}/build-settlement`, {
+      const game = await pozoviApi(`/games/${stanje.gameId}/build-settlement`, {
         method: "POST",
-        body: JSON.stringify({ tri_index: triIdx }),
+        body: JSON.stringify({ tri_index: indeksTemena }),
       });
-      state.settlementBuildMode = false;
-      applyServerState(game);
+      stanje.settlementBuildMode = false;
+      primeniStanjeSaServera(game);
     } catch (e) {
       alert("Greška: " + e.message);
     }
   }
 
-  function toggleCityBuildMode() {
-    state.cityBuildMode = !state.cityBuildMode;
-    renderBoard();
+  function prebaciRezimGradnjeGrada() {
+    stanje.cityBuildMode = !stanje.cityBuildMode;
+    iscrtajTablu();
   }
 
-  async function buildCityMultiplayer(triIdx) {
+  async function izgradiGradVisestruko(indeksTemena) {
     try {
-      const game = await apiFetch(`/games/${state.gameId}/build-city`, {
+      const game = await pozoviApi(`/games/${stanje.gameId}/build-city`, {
         method: "POST",
-        body: JSON.stringify({ tri_index: triIdx }),
+        body: JSON.stringify({ tri_index: indeksTemena }),
       });
-      state.cityBuildMode = false;
-      applyServerState(game);
+      stanje.cityBuildMode = false;
+      primeniStanjeSaServera(game);
     } catch (e) {
       alert("Greška: " + e.message);
     }
   }
 
-  function toggleTradePanel() {
+  function prebaciPanelRazmene() {
     const panel = document.getElementById("trade-panel");
     panel.style.display = panel.style.display === "none" ? "flex" : "none";
   }
 
-  async function confirmTrade() {
+  async function potvrdiRazmenu() {
     const give = document.getElementById("trade-give").value;
     const get = document.getElementById("trade-get").value;
     if (give === get) return alert("Izaberi različite resurse.");
     try {
-      const game = await apiFetch(`/games/${state.gameId}/trade`, {
+      const game = await pozoviApi(`/games/${stanje.gameId}/trade`, {
         method: "POST",
         body: JSON.stringify({ give, get }),
       });
       document.getElementById("trade-panel").style.display = "none";
-      applyServerState(game);
+      primeniStanjeSaServera(game);
     } catch (e) {
       alert("Greška: " + e.message);
     }
@@ -616,56 +616,56 @@
 
 
 
-  async function endTurnMultiplayer() {
+  async function zavrsiPotezVisestruko() {
     try {
-      const game = await apiFetch(`/games/${state.gameId}/end-turn`, { method: "POST" });
-      state.roadBuildMode = false;
-      applyServerState(game);
+      const game = await pozoviApi(`/games/${stanje.gameId}/end-turn`, { method: "POST" });
+      stanje.roadBuildMode = false;
+      primeniStanjeSaServera(game);
     } catch (e) {
       alert("Greška: " + e.message);
     }
   }
 
-  // ---------- MULTIPLAYER: primeni stanje dobijeno sa servera ----------
-    function applyServerState(game) {
-    state.createdBy = game.created_by;
-    state.isCreator = game.created_by === cfg.currentUserId;
+  // ---------- VISE_IGRACA: primeni stanje dobijeno sa servera ----------
+    function primeniStanjeSaServera(game) {
+    stanje.createdBy = game.created_by;
+    stanje.isCreator = game.created_by === podesavanja.currentUserId;
 
-    state.players = game.players.map((p) => ({
+    stanje.players = game.players.map((p) => ({
       id: p.id,
       name: p.username,
       resources: Object.assign({ drvo: 0, ovca: 0, psenica: 0, cigla: 0, kamen: 0 }, p.resources || {}),
     }));
 
     if (game.status === "finished") {
-      showGameOver(game);
+      prikaziKrajIgre(game);
       return;
     }
 
     const bs = game.board_state;
 
     if (!bs) {
-      state.phase = "waiting-setup";      document.getElementById("setup-controls").style.display = state.isCreator ? "block" : "none";
-      document.getElementById("waiting-host-msg").style.display = state.isCreator ? "none" : "block";
+      stanje.phase = "waiting-setup";      document.getElementById("setup-controls").style.display = stanje.isCreator ? "block" : "none";
+      document.getElementById("waiting-host-msg").style.display = stanje.isCreator ? "none" : "block";
       document.getElementById("picking-controls").style.display = "none";
       document.getElementById("game-controls").style.display = "none";
-      renderBoard();
+      iscrtajTablu();
       return;
     }
 
-    state.tiles = bs.tiles;
-    state.numbers = bs.numbers;
-    state.turnOrder = bs.turnOrder || [];
-    state.pickTurnIndex = bs.pickTurnIndex || 0;
-    state.pickSubPhase = bs.pickSubPhase || "settlement";
-    state.pendingRoadVertex = bs.pendingRoadVertex ?? null;
-    state.playTurnIndex = bs.playTurnIndex || 0;
-    state.hasRolledThisTurn = bs.hasRolledThisTurn || false;
-    state.mustDiscard = bs.mustDiscard || {};
-    state.playerTromedje = bs.playerTromedje || [];
-    state.roads = bs.roads || [];
-    state.log = bs.log || [];
-    state.phase = bs.phase;
+    stanje.tiles = bs.tiles;
+    stanje.numbers = bs.numbers;
+    stanje.turnOrder = bs.turnOrder || [];
+    stanje.pickTurnIndex = bs.pickTurnIndex || 0;
+    stanje.pickSubPhase = bs.pickSubPhase || "settlement";
+    stanje.pendingRoadVertex = bs.pendingRoadVertex ?? null;
+    stanje.playTurnIndex = bs.playTurnIndex || 0;
+    stanje.hasRolledThisTurn = bs.hasRolledThisTurn || false;
+    stanje.mustDiscard = bs.mustDiscard || {};
+    stanje.playerTromedje = bs.playerTromedje || [];
+    stanje.roads = bs.roads || [];
+    stanje.log = bs.log || [];
+    stanje.phase = bs.phase;
 
     document.getElementById("setup-controls").style.display = "none";
     document.getElementById("waiting-host-msg").style.display = "none";
@@ -674,211 +674,211 @@
       document.getElementById("picking-controls").style.display = "block";
       document.getElementById("game-controls").style.display = "none";
       document.getElementById("btn-start-game").style.display = "none";
-      renderPickingMultiplayer();
+      iscrtajBiranjeVisestruko();
     } else if (bs.phase === "playing") {
       document.getElementById("picking-controls").style.display = "none";
       document.getElementById("game-controls").style.display = "block";
-      renderPlayers();
-      renderLog();
-      renderPlayingMultiplayer();
+      iscrtajIgrace();
+      iscrtajIstorijuBacanja();
+      iscrtajIgranjeVisestruko();
     }
 
-    renderBoard();
+    iscrtajTablu();
   }
 
-  function showGameOver(game) {
+  function prikaziKrajIgre(game) {
     document.getElementById("setup-controls").style.display = "none";
     document.getElementById("waiting-host-msg").style.display = "none";
     document.getElementById("picking-controls").style.display = "none";
     document.getElementById("game-controls").style.display = "none";
 
     const winnerId = game.board_state ? game.board_state.winnerId : null;
-    const winnerName = winnerId ? playerName(winnerId) : "?";
+    const winnerName = winnerId ? imeIgraca(winnerId) : "?";
     document.getElementById("game-over-text").textContent = `🏆 Pobednik: ${winnerName}!`;
     document.getElementById("game-over-overlay").style.display = "flex";
   }
 
 
 
-  async function pollLoop() {
-    if (!MULTIPLAYER) return;
+  async function petljaOsvezavanja() {
+    if (!VISE_IGRACA) return;
     try {
-      const game = await apiFetch(`/games/${state.gameId}`);
-      applyServerState(game);
+      const game = await pozoviApi(`/games/${stanje.gameId}`);
+      primeniStanjeSaServera(game);
     } catch (e) {
       console.warn("Greška pri osvežavanju partije:", e);
     }
-    setTimeout(pollLoop, 1000);
+    setTimeout(petljaOsvezavanja, 1000);
   }
 
   // ---------- HOTSEAT (bez lobija - lokalna simulacija, bez sistema puteva) ----------
-  function buildPickOrder() {
-    const ids = state.players.map((p) => p.id);
+  function napraviRedosledBiranja() {
+    const ids = stanje.players.map((p) => p.id);
     return [...ids, ...[...ids].reverse()];
   }
 
-  function enterPickingPhaseHotseat() {
-    state.phase = "picking";
-    state.pickOrderHotseat = buildPickOrder();
-    state.currentPickIndex = 0;
-    state.playerTromedje = [];
+  function udjiUFazuBiranjaLokalno() {
+    stanje.phase = "picking";
+    stanje.pickOrderHotseat = napraviRedosledBiranja();
+    stanje.currentPickIndex = 0;
+    stanje.playerTromedje = [];
 
     document.getElementById("setup-controls").style.display = "none";
     document.getElementById("picking-controls").style.display = "block";
-    renderPickingHotseat();
+    iscrtajBiranjeLokalno();
   }
 
-  function renderPickingHotseat() {
+  function iscrtajBiranjeLokalno() {
     const turnInfo = document.getElementById("turn-indicator");
     const listEl = document.getElementById("tromedje-list");
     const startBtn = document.getElementById("btn-start-game");
 
-    if (state.currentPickIndex >= state.pickOrderHotseat.length) {
-      state.phase = "ready";
+    if (stanje.currentPickIndex >= stanje.pickOrderHotseat.length) {
+      stanje.phase = "ready";
       turnInfo.textContent = "✅ Svi tereni su izabrani. Klikni „Počni igru“.";
       listEl.innerHTML = "";
       startBtn.style.display = "inline-block";
-      renderBoard();
+      iscrtajTablu();
       return;
     }
 
-    const currentPlayerId = state.pickOrderHotseat[state.currentPickIndex];
-    turnInfo.textContent = `🎯 Na potezu: ${playerName(currentPlayerId)} — izaberi teren (${state.currentPickIndex + 1}/${state.pickOrderHotseat.length})`;
+    const currentPlayerId = stanje.pickOrderHotseat[stanje.currentPickIndex];
+    turnInfo.textContent = `🎯 Na potezu: ${imeIgraca(currentPlayerId)} — izaberi teren (${stanje.currentPickIndex + 1}/${stanje.pickOrderHotseat.length})`;
     startBtn.style.display = "none";
 
     listEl.innerHTML = "";
-    availableTromedje().forEach(({ idx, fields }) => {
+    dostupneTromedje().forEach(({ idx, fields }) => {
       const li = document.createElement("li");
       const btn = document.createElement("button");
-      btn.textContent = `Teren #${idx + 1}: ${describeTromedja(fields)}`;
-      btn.onclick = () => pickTromedjaHotseat(idx);
+      btn.textContent = `Teren #${idx + 1}: ${opisiTromedju(fields)}`;
+      btn.onclick = () => izaberiTromedjuLokalno(idx);
       li.appendChild(btn);
       listEl.appendChild(li);
     });
 
-    renderBoard();
+    iscrtajTablu();
   }
 
-  function pickTromedjaHotseat(triIdx) {
-    const currentPlayerId = state.pickOrderHotseat[state.currentPickIndex];
-    const fields = tromedje[triIdx];
-    state.playerTromedje.push({ id: currentPlayerId, fields });
+  function izaberiTromedjuLokalno(indeksTemena) {
+    const currentPlayerId = stanje.pickOrderHotseat[stanje.currentPickIndex];
+    const fields = tromedje[indeksTemena];
+    stanje.playerTromedje.push({ id: currentPlayerId, fields });
 
-    const brojevi = fields.map((idx) => state.numbers[idx]).filter((n) => n !== null);
-    state.log = [`${playerName(currentPlayerId)} je izabrao teren: brojevi ${brojevi.join(", ")}`, ...state.log].slice(0, 4);
+    const brojevi = fields.map((idx) => stanje.numbers[idx]).filter((n) => n !== null);
+    stanje.log = [`${imeIgraca(currentPlayerId)} je izabrao teren: brojevi ${brojevi.join(", ")}`, ...stanje.log].slice(0, 4);
 
-    state.currentPickIndex += 1;
-    renderPickingHotseat();
+    stanje.currentPickIndex += 1;
+    iscrtajBiranjeLokalno();
   }
 
-  async function finalizeGameHotseat() {
-    if (state.phase !== "ready") return;
-    state.phase = "playing";
+  async function zavrsiPripremuLokalno() {
+    if (stanje.phase !== "ready") return;
+    stanje.phase = "playing";
 
     document.getElementById("picking-controls").style.display = "none";
     document.getElementById("game-controls").style.display = "block";
-    state.currentTurnIndex = 0;
-    renderPlayers();
-    renderLog();
-    renderBoard();
-    renderTurnHotseat();
+    stanje.currentTurnIndex = 0;
+    iscrtajIgrace();
+    iscrtajIstorijuBacanja();
+    iscrtajTablu();
+    iscrtajPotezLokalno();
 
     try {
-      const game = await apiFetch("/games", {
+      const game = await pozoviApi("/games", {
         method: "POST",
-        body: JSON.stringify({ board_state: { tiles: state.tiles, numbers: state.numbers, playerTromedje: state.playerTromedje } }),
+        body: JSON.stringify({ board_state: { tiles: stanje.tiles, numbers: stanje.numbers, playerTromedje: stanje.playerTromedje } }),
       });
-      state.gameId = game.id;
+      stanje.gameId = game.id;
     } catch (e) {
       console.warn("Nije moguće sačuvati partiju na serveru:", e);
     }
   }
 
-  function renderTurnHotseat() {
-    const player = state.players[state.currentTurnIndex];
+  function iscrtajPotezLokalno() {
+    const player = stanje.players[stanje.currentTurnIndex];
     document.getElementById("turn-indicator-playing").textContent = `🎯 Na potezu: ${player ? player.name : "?"}`;
     document.getElementById("dice-icon").style.display = "block";
     document.getElementById("btn-next-turn").style.display = "none";
   }
 
-  function nextTurnHotseat() {
-    state.currentTurnIndex = (state.currentTurnIndex + 1) % state.players.length;
-    renderTurnHotseat();
+  function sledeciPotezLokalno() {
+    stanje.currentTurnIndex = (stanje.currentTurnIndex + 1) % stanje.players.length;
+    iscrtajPotezLokalno();
   }
 
-  async function rollGameDiceHotseat() {
+  async function baciKockuLokalno() {
     if (document.getElementById("dice-icon").style.display === "none") return;
 
-    const diceIcon = document.getElementById("dice-icon");
-    diceIcon.classList.add("dice-shake");
-    setTimeout(() => diceIcon.classList.remove("dice-shake"), 500);
+    const ikonicaKocke = document.getElementById("dice-icon");
+    ikonicaKocke.classList.add("dice-shake");
+    setTimeout(() => ikonicaKocke.classList.remove("dice-shake"), 500);
 
     let dice;
     try {
-      const result = state.gameId ? await apiFetch(`/games/${state.gameId}/roll`, { method: "POST" }) : null;
-      dice = result ? result.roll || rollOneDie() + rollOneDie() : rollOneDie() + rollOneDie();
+      const result = stanje.gameId ? await pozoviApi(`/games/${stanje.gameId}/roll`, { method: "POST" }) : null;
+      dice = result ? result.roll || baciJednuKocku() + baciJednuKocku() : baciJednuKocku() + baciJednuKocku();
     } catch (e) {
-      dice = rollOneDie() + rollOneDie();
+      dice = baciJednuKocku() + baciJednuKocku();
     }
-    state.log = [`Dobijen je broj ${dice}`, ...state.log].slice(0, 4);
-    state.rolled = dice;
+    stanje.log = [`Dobijen je broj ${dice}`, ...stanje.log].slice(0, 4);
+    stanje.rolled = dice;
 
-    state.players = state.players.map((p) => {
+    stanje.players = stanje.players.map((p) => {
       const upd = { ...p, resources: { ...p.resources } };
-      state.playerTromedje
+      stanje.playerTromedje
         .filter((t) => t.id === p.id)
         .forEach((trom) => {
           trom.fields.forEach((idx) => {
-            if (state.numbers[idx] === dice && state.tiles[idx] && state.tiles[idx] !== "pustinja") {
-              upd.resources[state.tiles[idx]] += 1;
+            if (stanje.numbers[idx] === dice && stanje.tiles[idx] && stanje.tiles[idx] !== "pustinja") {
+              upd.resources[stanje.tiles[idx]] += 1;
             }
           });
         });
       return upd;
     });
 
-    renderPlayers();
-    renderLog();
+    iscrtajIgrace();
+    iscrtajIstorijuBacanja();
 
     document.getElementById("dice-icon").style.display = "none";
     document.getElementById("btn-next-turn").style.display = "inline-block";
   }
 
-    function calculatePoints(playerId) {
-    return state.playerTromedje
+    function izracunajPoene(playerId) {
+    return stanje.playerTromedje
       .filter((t) => t.id === playerId)
       .reduce((sum, t) => sum + (t.type === "city" ? 2 : 1), 0);
   }
 
-  function renderPlayers() {
+  function iscrtajIgrace() {
     const el = document.getElementById("player-info");
     el.innerHTML = "";
-    const visiblePlayers = MULTIPLAYER ? state.players.filter((p) => p.id === cfg.currentUserId) : state.players;
+    const visiblePlayers = VISE_IGRACA ? stanje.players.filter((p) => p.id === podesavanja.currentUserId) : stanje.players;
     visiblePlayers.forEach((p) => {
       const box = document.createElement("div");
       box.className = "player-box";
-      box.innerHTML = `<h3 style="margin:0">${p.name} — 🏆 ${calculatePoints(p.id)} poena</h3>
+      box.innerHTML = `<h3 style="margin:0">${p.name} — 🏆 ${izracunajPoene(p.id)} poena</h3>
         <p>🌲 ${p.resources.drvo || 0} 🐑 ${p.resources.ovca || 0} 🌾 ${p.resources.psenica || 0} 🧱 ${p.resources.cigla || 0} 🪨 ${p.resources.kamen || 0}</p>`;
       el.appendChild(box);
     });
   }
 
-  function renderLog() {
+  function iscrtajIstorijuBacanja() {
     const el = document.getElementById("roll-log-list");
     el.innerHTML = "";
-    state.log.forEach((entry) => {
+    stanje.log.forEach((entry) => {
       const li = document.createElement("li");
       li.textContent = entry;
       el.appendChild(li);
     });
   }
 
-  async function saveGame() {
-    if (!state.gameId) return alert("Prvo pokreni partiju.");
+  async function sacuvajPartiju() {
+    if (!stanje.gameId) return alert("Prvo pokreni partiju.");
     try {
-      await apiFetch(`/games/${state.gameId}`, {
+      await pozoviApi(`/games/${stanje.gameId}`, {
         method: "PUT",
-        body: JSON.stringify({ board_state: { tiles: state.tiles, numbers: state.numbers, playerTromedje: state.playerTromedje, players: state.players, log: state.log } }),
+        body: JSON.stringify({ board_state: { tiles: stanje.tiles, numbers: stanje.numbers, playerTromedje: stanje.playerTromedje, players: stanje.players, log: stanje.log } }),
       });
       alert("✅ Partija sačuvana.");
     } catch (e) {
@@ -888,49 +888,49 @@
 
 
 
-  document.getElementById("btn-roll-setup").addEventListener("click", rollDiceAndAssign);
-  document.getElementById("dice-icon").addEventListener("click", MULTIPLAYER ? rollGameDiceMultiplayer : rollGameDiceHotseat);
+  document.getElementById("btn-roll-setup").addEventListener("click", baciKockuIDodeliBrojeve);
+  document.getElementById("dice-icon").addEventListener("click", VISE_IGRACA ? baciKockuVisestruko : baciKockuLokalno);
   document.getElementById("btn-finish-game").addEventListener("click", () => {
     window.location.href = "/";
   });
-  document.getElementById("btn-save").addEventListener("click", saveGame);
-  document.getElementById("btn-next-turn").addEventListener("click", MULTIPLAYER ? endTurnMultiplayer : nextTurnHotseat);
+  document.getElementById("btn-save").addEventListener("click", sacuvajPartiju);
+  document.getElementById("btn-next-turn").addEventListener("click", VISE_IGRACA ? zavrsiPotezVisestruko : sledeciPotezLokalno);
 
-  if (MULTIPLAYER) {
-    document.getElementById("btn-submit-board").addEventListener("click", submitBoard);
-    document.getElementById("btn-build-road").addEventListener("click", toggleRoadBuildMode);
-    document.getElementById("btn-build-settlement").addEventListener("click", toggleSettlementBuildMode);
-    document.getElementById("btn-build-city").addEventListener("click", toggleCityBuildMode);
-    document.getElementById("btn-trade-resources").addEventListener("click", toggleTradePanel);
-    document.getElementById("btn-confirm-trade").addEventListener("click", confirmTrade);
-    document.getElementById("btn-confirm-discard").addEventListener("click", confirmDiscard);
+  if (VISE_IGRACA) {
+    document.getElementById("btn-submit-board").addEventListener("click", posaljiTablu);
+    document.getElementById("btn-build-road").addEventListener("click", prebaciRezimGradnjePuta);
+    document.getElementById("btn-build-settlement").addEventListener("click", prebaciRezimGradnjeSela);
+    document.getElementById("btn-build-city").addEventListener("click", prebaciRezimGradnjeGrada);
+    document.getElementById("btn-trade-resources").addEventListener("click", prebaciPanelRazmene);
+    document.getElementById("btn-confirm-trade").addEventListener("click", potvrdiRazmenu);
+    document.getElementById("btn-confirm-discard").addEventListener("click", potvrdiOdbacivanje);
     document.getElementById("btn-load").style.display = "none";
     document.getElementById("btn-save").style.display = "none";
-    pollLoop();
+    petljaOsvezavanja();
   } else {
-    document.getElementById("btn-start-game").addEventListener("click", finalizeGameHotseat);
+    document.getElementById("btn-start-game").addEventListener("click", zavrsiPripremuLokalno);
     document.getElementById("btn-build-road").style.display = "none";
     document.getElementById("btn-build-settlement").style.display = "none";
     document.getElementById("btn-build-city").style.display = "none";
     document.getElementById("btn-trade-resources").style.display = "none";
     document.getElementById("btn-load").addEventListener("click", async () => {
-      if (!state.gameId) return alert("Nema aktivne partije za učitavanje.");
+      if (!stanje.gameId) return alert("Nema aktivne partije za učitavanje.");
       try {
-        const game = await apiFetch(`/games/${state.gameId}`);
+        const game = await pozoviApi(`/games/${stanje.gameId}`);
         const bs = game.board_state || {};
-        state.tiles = bs.tiles || state.tiles;
-        state.numbers = bs.numbers || state.numbers;
-        state.playerTromedje = bs.playerTromedje || state.playerTromedje;
-        state.players = bs.players || state.players;
-        state.log = bs.log || state.log;
-        renderBoard();
-        renderPlayers();
-        renderLog();
+        stanje.tiles = bs.tiles || stanje.tiles;
+        stanje.numbers = bs.numbers || stanje.numbers;
+        stanje.playerTromedje = bs.playerTromedje || stanje.playerTromedje;
+        stanje.players = bs.players || stanje.players;
+        stanje.log = bs.log || stanje.log;
+        iscrtajTablu();
+        iscrtajIgrace();
+        iscrtajIstorijuBacanja();
         alert("✅ Partija učitana.");
       } catch (e) {
         alert("❌ Greška pri učitavanju.");
       }
     });
-    renderBoard();
+    iscrtajTablu();
   }
 })();

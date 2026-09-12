@@ -16,34 +16,34 @@ class PasswordResetController extends Controller
     }
 
     // Salje link za reset na email (koristi Laravel Password broker + queue mail)
-    public function sendResetLink(Request $request)
+    public function sendResetLink(Request $zahtev)
     {
-        $request->validate(['email' => ['required', 'email']]);
+        $zahtev->validate(['email' => ['required', 'email']]);
 
-        $status = Password::sendResetLink($request->only('email'));
+        $status = Password::sendResetLink($zahtev->only('email'));
 
         return $status === Password::RESET_LINK_SENT
             ? back()->with('status', 'Link za resetovanje lozinke je poslat na email.')
             : back()->withErrors(['email' => __($status)]);
     }
 
-    public function showResetForm(Request $request, string $token)
+    public function showResetForm(Request $zahtev, string $token)
     {
-        return view('auth.reset-password', ['token' => $token, 'email' => $request->email]);
+        return view('auth.reset-password', ['token' => $token, 'email' => $zahtev->email]);
     }
 
-    public function reset(Request $request)
+    public function reset(Request $zahtev)
     {
-        $request->validate([
+        $zahtev->validate([
             'token' => ['required'],
             'email' => ['required', 'email'],
             'password' => ['required', 'confirmed', 'min:6'],
         ]);
 
         $status = Password::reset(
-            $request->only('email', 'password', 'password_confirmation', 'token'),
-            function ($user, $password) {
-                $user->forceFill(['password' => Hash::make($password)])->save();
+            $zahtev->only('email', 'password', 'password_confirmation', 'token'),
+            function ($korisnik, $password) {
+                $korisnik->forceFill(['password' => Hash::make($password)])->save();
             }
         );
 

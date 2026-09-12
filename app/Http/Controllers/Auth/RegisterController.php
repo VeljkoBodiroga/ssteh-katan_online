@@ -16,25 +16,25 @@ class RegisterController extends Controller
         return view('auth.register');
     }
 
-    public function register(Request $request)
+    public function register(Request $zahtev)
     {
-        $data = $request->validate([
+        $podaci = $zahtev->validate([
             'username' => ['required', 'string', 'max:50', 'unique:users,username'],
             'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email'],
             'password' => ['required', 'string', 'min:6', 'confirmed'],
         ]);
 
-        $user = User::create([
-            'username' => $data['username'],
-            'email' => $data['email'],
-            'password' => Hash::make($data['password']),
+        $korisnik = User::create([
+            'username' => $podaci['username'],
+            'email' => $podaci['email'],
+            'password' => Hash::make($podaci['password']),
             'role' => 'user',
         ]);
 
         // svaki novi igrac odmah dobija red u player_stats (default 0)
-        PlayerStat::create(['user_id' => $user->id]);
+        PlayerStat::create(['user_id' => $korisnik->id]);
 
-        Auth::login($user);
+        Auth::login($korisnik);
 
         return redirect('/');
     }

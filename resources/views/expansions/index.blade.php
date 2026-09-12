@@ -5,7 +5,7 @@
 @section('content')
 <div class="ekspanzije-container">
 
-        <form method="GET" action="{{ route('expansions.index') }}" class="filters">
+    <form method="GET" action="{{ route('expansions.index') }}" class="filters">
         <input type="text" name="search" value="{{ $search }}" placeholder="Pretraži po nazivu..."
                onkeydown="if(event.key==='Enter'){this.form.submit();}">
         <select name="sort" onchange="this.form.submit()">
@@ -14,7 +14,7 @@
         </select>
         @auth
             @if (auth()->user()->isAdmin())
-                <a href="{{ route('expansions.create') }}" style="margin-left:10px;">+ Nova ekspanzija</a>
+                <a href="{{ route('expansions.create') }}" class="admin-add-btn">+ Nova ekspanzija</a>
             @endif
         @endauth
     </form>
@@ -28,11 +28,11 @@
 
                 @auth
                     @if (auth()->user()->isAdmin())
-                        <div style="margin-top:8px; display:flex; gap:8px; justify-content:center;">
-                            <a href="{{ route('expansions.edit', $exp) }}">Izmeni</a>
+                        <div class="admin-actions">
+                            <a href="{{ route('expansions.edit', $exp) }}" class="admin-edit-btn">✎ Izmeni</a>
                             <form method="POST" action="{{ route('expansions.destroy', $exp) }}" onsubmit="return confirm('Obrisati ekspanziju?')">
                                 @csrf @method('DELETE')
-                                <button type="submit">Obriši</button>
+                                <button type="submit" class="admin-delete-btn">🗑 Obriši</button>
                             </form>
                         </div>
                     @endif
@@ -41,7 +41,7 @@
         @endforeach
     </div>
 
-        <div class="pagination">
+    <div class="pagination">
         {{ $expansions->onEachSide(1)->links('partials.pagination') }}
     </div>
 </div>

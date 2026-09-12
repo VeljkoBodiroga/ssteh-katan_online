@@ -13,28 +13,28 @@ class LoginController extends Controller
         return view('auth.login');
     }
 
-    public function login(Request $request)
+    public function login(Request $zahtev)
     {
-        $credentials = $request->validate([
-            'login' => ['required', 'string'],   // username ili email
+        $credentials = $zahtev->validate([
+            'login' => ['required', 'string'],   
             'password' => ['required', 'string'],
         ]);
 
         $field = filter_var($credentials['login'], FILTER_VALIDATE_EMAIL) ? 'email' : 'username';
 
-        if (Auth::attempt([$field => $credentials['login'], 'password' => $credentials['password']], $request->boolean('remember'))) {
-            $request->session()->regenerate();
+        if (Auth::attempt([$field => $credentials['login'], 'password' => $credentials['password']], $zahtev->boolean('remember'))) {
+            $zahtev->session()->regenerate();
             return redirect()->intended('/');
         }
 
         return back()->withErrors(['login' => 'Pogrešno korisničko ime/email ili lozinka'])->onlyInput('login');
     }
 
-    public function logout(Request $request)
+    public function logout(Request $zahtev)
     {
         Auth::logout();
-        $request->session()->invalidate();
-        $request->session()->regenerateToken();
+        $zahtev->session()->invalidate();
+        $zahtev->session()->regenerateToken();
         return redirect('/');
     }
 }

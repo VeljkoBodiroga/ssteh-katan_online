@@ -37,9 +37,9 @@ class Game extends Model
     public static function generateLobbyCode(): string
     {
         do {
-            $code = strtoupper(\Illuminate\Support\Str::random(6));
-        } while (self::where('lobby_code', $code)->exists());
+            $kod = strtoupper(\Illuminate\Support\Str::random(6));
+        } while (self::where('lobby_code', $kod)->exists());
 
-        return $code;
+        return $kod;
     }
 }
