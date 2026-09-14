@@ -8,10 +8,7 @@ use Illuminate\Support\Facades\Storage;
 
 class ExpansionController extends Controller
 {
-    /**
-     * Javna lista ekspanzija: pretraga + sortiranje + paginacija
-     * (isto sto i Stranice/Ekspanzije.tsx u React verziji, samo sad iz baze)
-     */
+   
     public function index(Request $zahtev)
     {
         $search = $zahtev->string('search')->toString();

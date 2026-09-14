@@ -4,7 +4,6 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-// Tip migracije: KREIRANJE PIVOT TABELE SA VISE STRANIH KLJUCEVA (many-to-many + FK)
 return new class extends Migration
 {
     public function up(): void

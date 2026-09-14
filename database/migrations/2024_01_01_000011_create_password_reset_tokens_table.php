@@ -4,8 +4,7 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-// Tip migracije: KREIRANJE TABELE (create table) - potrebna za "zaboravljena lozinka"
-// funkcionalnost (Laravel Password broker cuva ovde privremene tokene za reset).
+
 return new class extends Migration
 {
     public function up(): void

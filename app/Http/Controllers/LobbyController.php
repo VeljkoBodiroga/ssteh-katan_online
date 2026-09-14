@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\DB;
 
 class LobbyController extends Controller
 {
-    // GET /lobi — lista otvorenih lobija + forma za kreiranje novog
+    // GET lobi, lista lobija
     public function index()
     {
         $openLobbies = Game::where('status', 'lobby')
@@ -20,7 +20,7 @@ class LobbyController extends Controller
         return view('lobby.index', compact('openLobbies'));
     }
 
-    // POST /lobi — kreira novi lobi, kreator automatski postaje prvi igrac
+    // POST lobi, kreira lobi
     public function store(Request $zahtev)
     {
         $podaci = $zahtev->validate([
@@ -45,7 +45,7 @@ class LobbyController extends Controller
         return redirect()->route('lobby.show', $game);
     }
 
-    // GET /lobi/{game} — cekaonica (waiting room)
+    // GET cekaonica
     public function show(Game $game)
     {
         abort_if($game->status !== 'lobby' && ! $game->players->contains(request()->user()->id), 404);
@@ -56,7 +56,7 @@ class LobbyController extends Controller
         ]);
     }
 
-    // GET /lobi/{game}/status — JSON za polling (auto-osvezavanje liste igraca)
+    // GET osvezavanje lista igraca
     public function status(Game $game)
     {
         return response()->json([
@@ -70,7 +70,7 @@ class LobbyController extends Controller
         ]);
     }
 
-    // POST /lobi/pridruzi — pridruzivanje pomocu koda lobija
+    // POST pridruzivanje pomocu koda lobija
     public function joinByCode(Request $zahtev)
     {
         $podaci = $zahtev->validate(['code' => ['required', 'string']]);
@@ -101,7 +101,7 @@ class LobbyController extends Controller
         return redirect()->route('lobby.show', $game);
     }
 
-    // POST /lobi/{game}/pokreni — samo kreator moze da pokrene partiju
+    // POST pokretanje, samo kreator moze da pokrene partiju
     public function start(Request $zahtev, Game $game)
     {
         abort_unless($game->created_by === $zahtev->user()->id, 403, 'Samo kreator lobija može da pokrene partiju.');
@@ -115,7 +115,7 @@ class LobbyController extends Controller
         return redirect()->route('play', ['game' => $game->id]);
     }
 
-    // POST /lobi/{game}/ugasi — SAMO kreator gasi ceo lobi (brise partiju, svi izlete)
+    // POST ugasi, samo kreator moze, sve izbaci iz lobija
     public function cancel(Request $zahtev, Game $game)
     {
         abort_unless($game->created_by === $zahtev->user()->id, 403, 'Samo kreator lobija može da ga ugasi.');
@@ -126,7 +126,7 @@ class LobbyController extends Controller
         return redirect()->route('lobby.index')->with('status', 'Lobi je ugašen.');
     }
 
-    // POST /lobi/{game}/napusti — obican igrac (ne kreator) napusta lobi
+    // POST bican igrac napusta lobi
     public function leave(Request $zahtev, Game $game)
     {
         abort_if($game->created_by === $zahtev->user()->id, 403, 'Kreator ne može da napusti sopstveni lobi — ugasi ga.');

@@ -31,7 +31,7 @@ class RegisterController extends Controller
             'role' => 'user',
         ]);
 
-        // svaki novi igrac odmah dobija red u player_stats (default 0)
+        // svaki novi igrac odmah dobija red u tabeli player_stats
         PlayerStat::create(['user_id' => $korisnik->id]);
 
         Auth::login($korisnik);

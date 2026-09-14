@@ -13,7 +13,7 @@ class PlayerStat extends Model
         return $this->belongsTo(User::class);
     }
 
-    // Isto sto i PlayerStats klasa iz React Modeli/Statistika.ts
+    
     public function getProcenatAttribute(): int
     {
         return $this->odigrane > 0

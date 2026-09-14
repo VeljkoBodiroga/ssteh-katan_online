@@ -1,10 +1,4 @@
-// Port of src/Stranice/Igraj.tsx (React) na vanilla JS + Laravel API pozive.
-// DVA REZIMA:
-//  - VISE_IGRACA (podesavanja.gameId je postavljen, dosli smo iz lobija): server je izvor istine,
-//    svaki browser POLL-uje /api/games/{id} na ~1s i renderuje ono sto server kaze. Samo
-//    igrac na potezu (po pravoj ulogovanoj sesiji) moze da bira teren / baci kocku / gradi.
-//  - HOTSEAT (direktan pristup /igraj bez lobija): sve se odigrava lokalno u jednom browseru,
-//    korisno za brzo testiranje bez potrebe za dva naloga (bez sistema puteva).
+
 (function () {
   const podesavanja = window.CATAN_CONFIG;
   const VISE_IGRACA = !!podesavanja.gameId;
@@ -42,7 +36,7 @@
   ];
 
   // Master lista svih 30 moguca "puta" (ivica izmedju dva susedna temena) - MORA biti
-  // identicna serverskoj listi u GameApiController.php.
+  // identicna serverskoj listi u GameApiController.php
   const ivice = [
     [0, 3], [0, 4], [1, 2], [1, 4], [2, 9], [3, 5], [4, 7], [5, 6], [5, 8], [6, 12],
     [7, 8], [7, 10], [8, 14], [9, 10], [9, 11], [10, 16], [11, 18], [12, 13], [13, 14], [13, 19],
@@ -114,7 +108,7 @@
     return BOJE_IGRACA[idx >= 0 ? idx % BOJE_IGRACA.length : 0];
   }
 
-  // ---------- Zajednicki prikaz table ----------
+  // prikaz table
   function iscrtajTablu() {
     const boardEl = document.getElementById("board");
     boardEl.innerHTML = "";
@@ -162,8 +156,7 @@
     iscrtajMestaZaSelo();
   }
 
-  // Tacna pozicija temena (vertex) = prosek centara tri polja koja dodiruje,
-  // izracunato iz STVARNIH pozicija na ekranu (getBoundingClientRect), relativno na #board.
+  // Tacna pozicija temena (vertex) 
   function pozicijaTemena(indeksTemena) {
     const boardEl = document.getElementById("board");
     const boardRect = boardEl.getBoundingClientRect();
@@ -402,7 +395,7 @@
       .join(" · ");
   }
 
-  // ---------- VISE_IGRACA: picking ----------
+  // biranje vise igraca
     function iscrtajBiranjeVisestruko() {
     const turnInfo = document.getElementById("turn-indicator");
     const listEl = document.getElementById("tromedje-list");
@@ -412,21 +405,21 @@
 
     if (stanje.pickSubPhase === "road") {
       turnInfo.textContent = mojPotez
-        ? `🎯 Sad izgradi (besplatan) put tačno pored svog novog sela (${stanje.pickTurnIndex + 1}/${totalPicks})`
+        ? `🎯 Sad izgradi put pored svog novog sela (${stanje.pickTurnIndex + 1}/${totalPicks})`
         : `⏳ Na potezu: ${imeIgraca(currentUserId)} gradi put (${stanje.pickTurnIndex + 1}/${totalPicks}) — čekaj svoj red...`;
       listEl.innerHTML = "";
       return;
     }
 
     turnInfo.textContent = mojPotez
-      ? `🎯 Na tebi je red da izabereš teren (${stanje.pickTurnIndex + 1}/${totalPicks})`
+      ? `🎯 Na tebi je red da izabereš selo (${stanje.pickTurnIndex + 1}/${totalPicks})`
       : `⏳ Na potezu: ${imeIgraca(currentUserId)} (${stanje.pickTurnIndex + 1}/${totalPicks}) — čekaj svoj red...`;
 
     listEl.innerHTML = "";
     dostupneTromedje().forEach(({ idx, fields }) => {
       const li = document.createElement("li");
       const btn = document.createElement("button");
-      btn.textContent = `Teren #${idx + 1}: ${opisiTromedju(fields)}`;
+      btn.textContent = `Selo #${idx + 1}: ${opisiTromedju(fields)}`;
       btn.disabled = !mojPotez;
       btn.onclick = () => izaberiTromedjuVisestruko(idx);
       li.appendChild(btn);
@@ -446,7 +439,7 @@
     }
   }
 
-    // ---------- VISE_IGRACA: igranje (kocka -> (gradnja) -> Dalje) ----------
+    
   function iscrtajIgranjeVisestruko() {
     const currentUserId = stanje.turnOrder[stanje.playTurnIndex % stanje.turnOrder.length];
     const mojPotez = currentUserId === podesavanja.currentUserId;
@@ -455,7 +448,7 @@
 
     if (idOnihKojiCekaju.length > 0) {
       const names = idOnihKojiCekaju.map((id) => imeIgraca(Number(id))).join(", ");
-      turnEl.textContent = `⚠️ Pao je 7! Čeka se odbacivanje karata: ${names}`;
+      turnEl.textContent = `⚠️ Pala je 7! Čeka se odbacivanje karata: ${names}`;
       document.getElementById("dice-icon").style.display = "none";
       document.getElementById("btn-next-turn").style.display = "none";
       document.getElementById("btn-build-road").style.display = "none";
@@ -501,7 +494,7 @@
     }
     const me = stanje.players.find((p) => p.id === podesavanja.currentUserId);
     panel.style.display = "flex";
-    document.getElementById("discard-info").textContent = `Moraš odbaciti ${myRequired} karata:`;
+    document.getElementById("discard-info").textContent = `Moraš odbaciti ${myRequired} resursa:`;
     ["drvo", "ovca", "psenica", "cigla", "kamen"].forEach((res) => {
       const input = document.getElementById(`discard-${res}`);
       const max = me ? me.resources[res] || 0 : 0;
@@ -626,7 +619,7 @@
     }
   }
 
-  // ---------- VISE_IGRACA: primeni stanje dobijeno sa servera ----------
+  //VISE_IGRACA: primeni stanje dobijeno sa servera
     function primeniStanjeSaServera(game) {
     stanje.createdBy = game.created_by;
     stanje.isCreator = game.created_by === podesavanja.currentUserId;
@@ -711,7 +704,7 @@
     setTimeout(petljaOsvezavanja, 1000);
   }
 
-  // ---------- HOTSEAT (bez lobija - lokalna simulacija, bez sistema puteva) ----------
+  // HOTSEAT (bez lobija - lokalna simulacija, bez sistema puteva) 
   function napraviRedosledBiranja() {
     const ids = stanje.players.map((p) => p.id);
     return [...ids, ...[...ids].reverse()];

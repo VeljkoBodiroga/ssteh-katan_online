@@ -13,8 +13,6 @@ class StatsController extends Controller
         $korisnik = Auth::user();
         $stats = $korisnik->playerStat;
 
-        // Poziv javnog veb servisa (isto sto i fetch(api.quotable.io) u React verziji).
-        // Keširamo 60s da ne udaramo API pri svakom refresh-u (dodatna funkcionalnost: keširanje).
         $quote = Cache::remember('motivational_quote', 60, function () {
             try {
                 $odgovor = Http::timeout(5)->get('https://api.quotable.io/random');

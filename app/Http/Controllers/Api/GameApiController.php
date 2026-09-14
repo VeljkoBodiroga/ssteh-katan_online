@@ -77,7 +77,7 @@ class GameApiController extends Controller
         return response()->json($game->players);
     }
 
-    // PUT /api/games/{game} — opste cuvanje (koristi ga npr. "Sacuvaj" dugme u hotseat rezimu)
+    // PUT /api/games/{game} — opste cuvanje
     public function update(Request $zahtev, Game $game)
     {
         $this->proveriPristup($game);
@@ -92,8 +92,7 @@ class GameApiController extends Controller
         return response()->json($this->pripremiOdgovor($game));
     }
 
-    // POST /api/games/{game}/setup-board — SAMO kreator postavlja tablu (polja+brojevi)
-    // i time otvara fazu biranja terena za sve igrace.
+    // POST /api/games/{game}/setup-board 
     public function setupBoard(Request $zahtev, Game $game)
     {
         $this->proveriPristup($game);
@@ -132,7 +131,7 @@ class GameApiController extends Controller
         return response()->json($this->pripremiOdgovor($game->fresh()));
     }
 
-    // POST /api/games/{game}/pick — igrac na potezu bira teren (tromedju)
+    // POST igrac na potezu bira selo (tromedju)
     public function pick(Request $zahtev, Game $game)
     {
         $this->proveriPristup($game);
@@ -159,14 +158,13 @@ foreach (($stanjeTable['playerTromedje'] ?? []) as $t) {
             $zajednicka = array_intersect($polja, $t['fields']);
             abort_if(count($zajednicka) >= 2, 422, 'Taj teren je zauzet ili je sused već zauzetom terenu.');
         }
-        // Broj vec izabranih sela ovog igraca PRE ovog izbora - u pravoj Catan igri
-        // pocetni resursi se dobijaju samo za DRUGO selo, ne za prvo.
+        
         $brojPre = collect($stanjeTable['playerTromedje'] ?? [])->where('id', $idTrenutnogIgraca)->count();
 
         $stanjeTable['playerTromedje'][] = ['id' => $idTrenutnogIgraca, 'fields' => array_values($polja), 'type' => 'settlement', 'tri_index' => $podaci['tri_index']];
 
-        // NE predajemo red odmah - igrac prvo MORA da izgradi (besplatan) put tacno
-        // pored ovog sela pre nego sto potez predje na sledeceg igraca.
+        
+        
         $stanjeTable['pickSubPhase'] = 'road';
         $stanjeTable['pendingRoadVertex'] = $podaci['tri_index'];
 
@@ -188,8 +186,7 @@ foreach (($stanjeTable['playerTromedje'] ?? []) as $t) {
         return response()->json($this->pripremiOdgovor($game->fresh()));
     }
 
-    // POST /api/games/{game}/pick-road — besplatan put ODMAH pored sela koje je upravo izabrano
-    // (deo pocetne faze), tek posle ovoga red prelazi na sledeceg igraca.
+    // POST besplatan put domah pored sela
     public function pickRoad(Request $zahtev, Game $game)
     {
         $this->proveriPristup($game);
@@ -233,8 +230,7 @@ foreach (($stanjeTable['playerTromedje'] ?? []) as $t) {
         return response()->json($this->pripremiOdgovor($game->fresh()));
     }
 
-    // POST /api/games/{game}/roll — SAMO igrac na potezu baca kockice, JEDNOM po potezu.
-    // Vise NE predaje red automatski - za to sluzi posebna /end-turn ruta.
+    // POST bacanje kockica
     public function roll(Request $zahtev, Game $game)
     {
         $this->proveriPristup($game);
@@ -299,7 +295,7 @@ foreach (($stanjeTable['playerTromedje'] ?? []) as $t) {
         return response()->json($this->pripremiOdgovor($game->fresh()));
     }
 
-    // POST /api/games/{game}/discard — igrac odbacuje karte posle bacenog 7
+    // POST odbacivanje karti posle bacene 7
     public function discard(Request $zahtev, Game $game)
     {
         $this->proveriPristup($game);
@@ -342,7 +338,7 @@ foreach (($stanjeTable['playerTromedje'] ?? []) as $t) {
         return response()->json($this->pripremiOdgovor($game->fresh()));
     }
 
-    // POST /api/games/{game}/build-road — gradnja puta (1 drvo + 1 cigla)
+    // POST gradnja puta
     public function buildRoad(Request $zahtev, Game $game)
     {
         $this->proveriPristup($game);
@@ -404,7 +400,7 @@ foreach (($stanjeTable['playerTromedje'] ?? []) as $t) {
         return response()->json($this->pripremiOdgovor($game->fresh()));
     }
 
-    // POST /api/games/{game}/build-settlement — novo selo tokom igre (1 drvo+1 cigla+1 ovca+1 psenica)
+    // POST novo selo tokom igre 
     public function buildSettlement(Request $zahtev, Game $game)
     {
         $this->proveriPristup($game);
@@ -424,14 +420,13 @@ foreach (($stanjeTable['playerTromedje'] ?? []) as $t) {
         $polja = self::TROMEDJE[$podaci['tri_index']];
         $tromedjeIgraca = $stanjeTable['playerTromedje'] ?? [];
 
-        // Pravilo razdaljine: ne sme deliti 2 zajednicka polja ni sa jednim postojecim
-        // naseljem/gradom (bilo cijim) - to znaci "susedno teme".
+        
         foreach ($tromedjeIgraca as $t) {
             $zajednicka = array_intersect($polja, $t['fields']);
             abort_if(count($zajednicka) >= 2, 422, 'Selo je preblizu drugog naselja.');
         }
 
-        // Mora biti povezano MOJIM putem (bar jedan moj put ima ovo teme kao kraj).
+        
         $putevi = $stanjeTable['roads'] ?? [];
         $temenaMojihPuteva = collect($putevi)
             ->where('id', $idTrenutnogIgraca)
@@ -439,7 +434,7 @@ foreach (($stanjeTable['playerTromedje'] ?? []) as $t) {
             ->unique();
         abort_unless($temenaMojihPuteva->contains($podaci['tri_index']), 422, 'Selo mora biti povezano tvojim putem.');
 
-        // Resursi.
+        // Resursi
         $pivotPodaci = DB::table('game_players')->where('game_id', $game->id)->where('user_id', $idTrenutnogIgraca)->first();
         $resursi = $pivotPodaci && $pivotPodaci->resources ? json_decode($pivotPodaci->resources, true) : [];
         foreach (['drvo', 'cigla', 'ovca', 'psenica'] as $potrebnoResurs) {
@@ -462,7 +457,7 @@ foreach (($stanjeTable['playerTromedje'] ?? []) as $t) {
         return response()->json($this->pripremiOdgovor($game->fresh()));
     }
 
-    // POST /api/games/{game}/build-city — unapredjenje sela u grad (2 psenica + 3 kamen)
+    // POST unapredjenje sela u grad 
     public function buildCity(Request $zahtev, Game $game)
     {
         $this->proveriPristup($game);
@@ -515,7 +510,7 @@ foreach (($stanjeTable['playerTromedje'] ?? []) as $t) {
 
 
 
-    // POST /api/games/{game}/end-turn — igrac na potezu zavrsava potez i predaje ga sledecem
+    // POST zavrsavanje poteza
     public function endTurn(Request $zahtev, Game $game)
     {
         $this->proveriPristup($game);
@@ -535,7 +530,7 @@ foreach (($stanjeTable['playerTromedje'] ?? []) as $t) {
         return response()->json($this->pripremiOdgovor($game->fresh()));
     }
 
-    // POST /api/games/{game}/trade — razmena 4 istog resursa za 1 drugi (banka, 4:1)
+    // POST razmena 4 za 1
     public function trade(Request $zahtev, Game $game)
     {
         $this->proveriPristup($game);
@@ -565,7 +560,7 @@ foreach (($stanjeTable['playerTromedje'] ?? []) as $t) {
     }
 
 
-    // DELETE /api/games/{game} — brise partiju (vlasnik ili admin)
+    // DELETE brise partiju 
     public function destroy(Request $zahtev, Game $game)
     {
         if ($game->created_by !== $zahtev->user()->id && ! $zahtev->user()->isAdmin()) {
@@ -583,8 +578,7 @@ foreach (($stanjeTable['playerTromedje'] ?? []) as $t) {
         }
     }
 
-    // Proverava da li je neko dosao do 5 poena; ako jeste, zavrsava partiju i
-    // azurira player_stats (odigrane/pobedjene/ukupno_poena) za sve igrace u partiji.
+    
     private function proveriKrajIgre(Game $game, array $stanjeTable): array
     {
         if ($game->status === 'finished') {
@@ -623,7 +617,7 @@ foreach (($stanjeTable['playerTromedje'] ?? []) as $t) {
         return ['bs' => $stanjeTable, 'finished' => true];
     }
 
-    // Dodaje (ili oduzima, ako je qty negativan) resurse igracu u game_players pivot tabeli.
+    
     private function dodajResurse(Game $game, int $idKorisnika, array $razlika): void
     {
         $pivotPodaci = DB::table('game_players')->where('game_id', $game->id)->where('user_id', $idKorisnika)->first();
@@ -634,7 +628,7 @@ foreach (($stanjeTable['playerTromedje'] ?? []) as $t) {
         $game->players()->updateExistingPivot($idKorisnika, ['resources' => json_encode($resursi)]);
     }
 
-    // Standardizovan JSON odgovor: partija + igraci sa dekodiranim resursima.
+    
     private function pripremiOdgovor(Game $game): array
     {
         $game->load('players');

@@ -4,8 +4,6 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-// Tip migracije: DODAVANJE KOLONA (alter table - add column)
-// Omogucava lobi sistem: kreator dobija kratki kod koji deli sa ostalima da se pridruze.
 return new class extends Migration
 {
     public function up(): void

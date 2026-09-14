@@ -4,8 +4,7 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-// Tip migracije: DODAVANJE INDEKSA (alter table - add index)
-// Ubrzava pretragu ekspanzija po nazivu (koristi se u filtriranju/pretrazi).
+
 return new class extends Migration
 {
     public function up(): void

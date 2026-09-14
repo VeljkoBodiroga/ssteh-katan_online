@@ -15,7 +15,7 @@ class PasswordResetController extends Controller
         return view('auth.forgot-password');
     }
 
-    // Salje link za reset na email (koristi Laravel Password broker + queue mail)
+    // Salje link za reset na email (folder logs)
     public function sendResetLink(Request $zahtev)
     {
         $zahtev->validate(['email' => ['required', 'email']]);
